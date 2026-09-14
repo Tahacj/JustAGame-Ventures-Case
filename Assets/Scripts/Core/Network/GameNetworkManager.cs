@@ -5,25 +5,44 @@ using JustAGame.Inventory;
 
 namespace JustAGame.Core.Network
 {
-    /// <summary>
-    /// Custom NetworkManager managing player life cycles and maintaining a reference 
-    /// to the Host's PlayerInventory for server-authoritative vending machine distribution.
-    /// </summary>
     [AddComponentMenu("JustAGame/Game Network Manager")]
     public class GameNetworkManager : NetworkManager
     {
-        /// <summary>
-        /// Reference to the host player's inventory (only valid on the server/host).
-        /// </summary>
-        public static PlayerInventory HostInventory { get; private set; }
+        [SerializeField] private Transform[] spawnPoints;
 
+        private int _manualSpawnIndex = 0;
+
+        // Cached host inventory for odd/even routing
+        public static PlayerInventory HostInventory { get; private set; }
         public static event Action<PlayerInventory> OnHostInventoryAssigned;
+
+        public override Transform GetStartPosition()
+        {
+            // Use manual spawn points if assigned; otherwise fallback to Mirror defaults
+            if (spawnPoints != null && spawnPoints.Length > 0)
+            {
+                var validPoints = Array.FindAll(spawnPoints, p => p != null);
+                if (validPoints.Length > 0)
+                {
+                    if (playerSpawnMethod == PlayerSpawnMethod.Random)
+                    {
+                        return validPoints[UnityEngine.Random.Range(0, validPoints.Length)];
+                    }
+
+                    Transform point = validPoints[_manualSpawnIndex % validPoints.Length];
+                    _manualSpawnIndex = (_manualSpawnIndex + 1) % validPoints.Length;
+                    return point;
+                }
+            }
+
+            return base.GetStartPosition();
+        }
 
         public override void OnServerAddPlayer(NetworkConnectionToClient conn)
         {
             base.OnServerAddPlayer(conn);
 
-            // Check if this newly spawned player belongs to the local Host player
+            // Register host inventory when local host player spawns
             if (conn == NetworkServer.localConnection && conn.identity != null)
             {
                 var inventory = conn.identity.GetComponent<PlayerInventory>();
@@ -31,7 +50,6 @@ namespace JustAGame.Core.Network
                 {
                     HostInventory = inventory;
                     OnHostInventoryAssigned?.Invoke(inventory);
-                    Debug.Log("[GameNetworkManager] Host PlayerInventory successfully registered.");
                 }
             }
         }
@@ -52,9 +70,7 @@ namespace JustAGame.Core.Network
             base.OnStopServer();
         }
 
-        /// <summary>
-        /// Utility helper to find the host player's inventory on the server if not cached.
-        /// </summary>
+        // Resolves host inventory reference on the server
         public static PlayerInventory GetHostInventory()
         {
             if (HostInventory != null) return HostInventory;

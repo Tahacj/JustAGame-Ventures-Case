@@ -48,3 +48,12 @@ Envanterde boş slot olup olmadığı denetlenmeden inventory.Add() çağrılıy
 
 ### Spam / Rate-Limiting Koruması Yok:
 İstemcinin bu metodu tek bir karede yüzlerce kez çağırmasını engelleyen bir debounce/cooldown mekanizması bulunmuyor.
+
+---
+
+# System Flowchart
+
+Aşağıdaki şema; istemci-sunucu (Client-Server) mimarisi, mesafe/tetikleyici kontrolü, sıfır-güven (zero-trust) satın alma doğrulama hattı, tek/çift (Odd/Even) envanter dağıtım kuralı ve durum senkronizasyonunun (State Sync) uçtan uca işleyişini göstermektedir:
+
+![System Flowchart](image.jpg)
+

@@ -15,6 +15,7 @@ GameObject:
   - component: {fileID: 3836646015447506607}
   - component: {fileID: 6636960703108547432}
   - component: {fileID: 2915359720741129343}
+  - component: {fileID: 2311902660274931298}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -189,6 +190,22 @@ MonoBehaviour:
   moveSpeed: 6
   rotationSpeed: 12
   gravity: -9.81
+--- !u!114 &2311902660274931298
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1898661023621947674}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9951919a64ccf2648a5f379381057737, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::JustAGame.Inventory.PlayerInventory
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
+  defaultStartingMoney: 100
 --- !u!1 &3287134265157236330
 GameObject:
   m_ObjectHideFlags: 0

@@ -14,6 +14,9 @@ namespace Mirror
         public int offsetX;
         public int offsetY;
 
+        [Tooltip("Show or hide the Server Only button in the HUD.")]
+        public bool showServerOnly = false;
+
         void Awake()
         {
             manager = GetComponent<NetworkManager>();
@@ -90,8 +93,11 @@ namespace Mirror
                 // cant be a server in webgl build
                 GUILayout.Box("( WebGL cannot be server )");
 #else
-                if (GUILayout.Button("Server Only"))
-                    manager.StartServer();
+                if (showServerOnly)
+                {
+                    if (GUILayout.Button("Server Only"))
+                        manager.StartServer();
+                }
 #endif
             }
             else
