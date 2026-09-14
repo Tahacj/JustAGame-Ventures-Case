@@ -6,22 +6,11 @@ using UnityEngine.InputSystem;
 
 namespace JustAGame.Movement
 {
-    /// <summary>
-    /// Client-authoritative movement controller.
-    /// Uses Mirror's built-in NetworkTransform (Unreliable or Reliable) to synchronize 
-    /// positions from the local owning client to the server and remote observer clients.
-    /// </summary>
     [RequireComponent(typeof(CharacterController))]
     public class ClientAuthoritativeMovement : NetworkBehaviour
     {
-        [Header("Movement Settings")]
-        [Tooltip("Horizontal movement speed in units/second.")]
         [SerializeField] private float moveSpeed = 6.0f;
-
-        [Tooltip("Rotation smoothing speed.")]
         [SerializeField] private float rotationSpeed = 12.0f;
-
-        [Tooltip("Gravity acceleration.")]
         [SerializeField] private float gravity = -9.81f;
 
         private CharacterController _characterController;
@@ -37,12 +26,13 @@ namespace JustAGame.Movement
         {
             base.OnStartAuthority();
             _mainCamera = Camera.main;
+
             if (CameraFollow.Instance != null)
             {
                 CameraFollow.Instance.SetTarget(transform);
             }
 
-            // Ensure NetworkTransform is configured for Client-to-Server authority
+            // Ensure NetworkTransform syncs client inputs to server
             var networkTransform = GetComponent<NetworkTransformBase>();
             if (networkTransform != null)
             {
@@ -52,7 +42,7 @@ namespace JustAGame.Movement
 
         private void Update()
         {
-            // Client-authoritative rule: Only the owning client processes local input & movement
+            // Only the owning client processes local input
             if (!isOwned) return;
 
             HandleMovement();
@@ -63,7 +53,7 @@ namespace JustAGame.Movement
             Vector2 input = GetMovementInput();
             Vector3 direction = new Vector3(input.x, 0f, input.y);
 
-            // Translate direction relative to camera viewpoint if camera exists
+            // Align movement with camera orientation
             if (_mainCamera != null && direction.sqrMagnitude > 0.001f)
             {
                 Vector3 camForward = _mainCamera.transform.forward;
@@ -76,13 +66,12 @@ namespace JustAGame.Movement
                 direction = (camForward * direction.z + camRight * direction.x).normalized;
             }
 
-            // Apply horizontal velocity
             Vector3 motion = direction * (moveSpeed * Time.deltaTime);
 
-            // Apply gravity
+            // Apply gravity and ground check
             if (_characterController.isGrounded && _velocity.y < 0)
             {
-                _velocity.y = -2f; // Slight downward grounding force
+                _velocity.y = -2f;
             }
             else
             {
@@ -90,11 +79,9 @@ namespace JustAGame.Movement
             }
 
             motion.y = _velocity.y * Time.deltaTime;
-
-            // Move CharacterController
             _characterController.Move(motion);
 
-            // Smooth rotation towards movement direction
+            // Smoothly rotate towards movement direction
             if (direction.sqrMagnitude > 0.001f)
             {
                 Quaternion targetRotation = Quaternion.LookRotation(new Vector3(direction.x, 0f, direction.z));
@@ -102,9 +89,7 @@ namespace JustAGame.Movement
             }
         }
 
-        /// <summary>
-        /// Reads input with cross-compatibility for New Input System and Legacy Input.
-        /// </summary>
+        // Cross-compatible input reading for New and Legacy Input System
         private Vector2 GetMovementInput()
         {
             Vector2 input = Vector2.zero;
@@ -136,7 +121,6 @@ namespace JustAGame.Movement
         protected override void OnValidate()
         {
             base.OnValidate();
-            // Automatically ensure that any NetworkTransform on this object is set to ClientToServer
             var nt = GetComponent<NetworkTransformBase>();
             if (nt != null && nt.syncDirection != SyncDirection.ClientToServer)
             {

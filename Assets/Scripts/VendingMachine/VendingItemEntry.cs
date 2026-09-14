@@ -2,10 +2,7 @@ using System;
 
 namespace JustAGame.VendingMachine
 {
-    /// <summary>
-    /// Represents an available item slot in the Vending Machine.
-    /// Synchronized from Host/Server to all clients.
-    /// </summary>
+    // Item entry serialized across network from Host to all clients
     [Serializable]
     public struct VendingItemEntry : IEquatable<VendingItemEntry>
     {

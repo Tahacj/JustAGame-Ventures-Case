@@ -2,10 +2,7 @@ using System;
 
 namespace JustAGame.Inventory
 {
-    /// <summary>
-    /// Represents an individual item instance within the network inventory.
-    /// Serialized across Mirror network channels.
-    /// </summary>
+    // Network-serialized item instance tracking unique server GUID
     [Serializable]
     public struct ItemData : IEquatable<ItemData>
     {

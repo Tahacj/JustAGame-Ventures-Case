@@ -8,44 +8,24 @@ using JustAGame.Pooling;
 
 namespace JustAGame.UI
 {
-    /// <summary>
-    /// UI Controller for the Vending Machine.
-    /// Uses ObjectPool to dynamically instantiate and reuse button prefabs for each available item.
-    /// Synchronizes dynamically with host-created items (IDs 1, 2, 3...).
-    /// Includes optional Host-Only controls for creating new items.
-    /// </summary>
     public class VendingMachineUI : MonoBehaviour
     {
-        [Header("Target Vending Machine")]
-        [Tooltip("Optional reference to the target VendingMachine. If null, automatically finds one in the scene.")]
         [SerializeField] private VendingMachine.VendingMachine targetMachine;
-
-        [Header("Dynamic Button Pooling")]
-        [Tooltip("Prefab for individual item buttons.")]
         [SerializeField] private VendingMachineItemButton itemButtonPrefab;
-
-        [Tooltip("Container (e.g. VerticalLayoutGroup) where item buttons are spawned.")]
         [SerializeField] private Transform buttonsContainer;
-
-        [Header("UI Panels & Status")]
-        [Tooltip("Panel containing the shop interface.")]
         [SerializeField] private GameObject shopPanel;
-
-        [Tooltip("Status label to show purchase feedbacks or error messages.")]
         [SerializeField] private TextMeshProUGUI statusTMP;
-        [SerializeField] private Text statusText;
-
-        [Header("Host-Only Controls (Optional)")]
-        [Tooltip("Panel with controls only visible to the Host (e.g. 'Create New Item' button).")]
         [SerializeField] private GameObject hostControlsPanel;
         [SerializeField] private Button hostCreateItemButton;
 
-        // Object pool for the button prefabs
         private ObjectPool<VendingMachineItemButton> _buttonPool;
         private readonly List<VendingMachineItemButton> _activeButtons = new List<VendingMachineItemButton>();
+        private Canvas _canvas;
 
         private void Awake()
         {
+            _canvas = GetComponent<Canvas>();
+
             if (itemButtonPrefab != null && buttonsContainer != null)
             {
                 _buttonPool = new ObjectPool<VendingMachineItemButton>(
@@ -63,11 +43,9 @@ namespace JustAGame.UI
 
         private void OnEnable()
         {
-            // Subscribe to vending machine transaction feedback
             VendingMachine.VendingMachine.OnLocalPurchaseSuccess += HandlePurchaseSuccess;
             VendingMachine.VendingMachine.OnLocalPurchaseFailed += HandlePurchaseFailed;
 
-            // Subscribe to trigger proximity events
             VendingMachineTrigger.OnVendingMachineEntered += HandleTriggerEntered;
             VendingMachineTrigger.OnVendingMachineExited += HandleTriggerExited;
 
@@ -76,7 +54,6 @@ namespace JustAGame.UI
 
         private void OnDisable()
         {
-            // Safeguard against memory leaks
             VendingMachine.VendingMachine.OnLocalPurchaseSuccess -= HandlePurchaseSuccess;
             VendingMachine.VendingMachine.OnLocalPurchaseFailed -= HandlePurchaseFailed;
 
@@ -104,6 +81,7 @@ namespace JustAGame.UI
                 targetMachine = FindFirstObjectByType<VendingMachine.VendingMachine>();
             }
             BindToMachine(targetMachine);
+            CloseShop();
         }
 
         private void BindToMachine(VendingMachine.VendingMachine machine)
@@ -112,7 +90,6 @@ namespace JustAGame.UI
             targetMachine = machine;
             targetMachine.OnAvailableItemsUpdated += RefreshItemButtons;
 
-            // Initial population
             RefreshItemButtons(targetMachine.AvailableItems);
         }
 
@@ -141,12 +118,9 @@ namespace JustAGame.UI
 
         public void OpenShop()
         {
-            if (shopPanel != null)
-            {
-                shopPanel.SetActive(true);
-            }
+            SetVisible(true);
 
-            // Only show host controls if running as Host/Server
+            // Only display creation controls to the Host
             if (hostControlsPanel != null)
             {
                 hostControlsPanel.SetActive(NetworkServer.active);
@@ -157,26 +131,37 @@ namespace JustAGame.UI
 
         public void CloseShop()
         {
-            if (shopPanel != null)
+            SetVisible(false);
+        }
+
+        // Toggle Canvas component so GameObject and event listeners remain active
+        private void SetVisible(bool visible)
+        {
+            if (_canvas != null)
             {
-                shopPanel.SetActive(false);
+                _canvas.enabled = visible;
+            }
+            else if (shopPanel != null && shopPanel != gameObject)
+            {
+                shopPanel.SetActive(visible);
+            }
+            else
+            {
+                for (int i = 0; i < transform.childCount; i++)
+                {
+                    transform.GetChild(i).gameObject.SetActive(visible);
+                }
             }
         }
 
-        /// <summary>
-        /// Populates item buttons using the Object Pool whenever the Host modifies the available items.
-        /// Zero allocations during reuse.
-        /// </summary>
+        // Recycles buttons using ObjectPool without GC allocations
         public void RefreshItemButtons(IReadOnlyList<VendingItemEntry> items)
         {
             if (_buttonPool == null || buttonsContainer == null) return;
 
-            // Return active buttons back to the pool
             ClearActiveButtons();
-
             if (items == null) return;
 
-            // Fetch and setup a pooled button for each item
             for (int i = 0; i < items.Count; i++)
             {
                 VendingItemEntry entry = items[i];
@@ -201,9 +186,7 @@ namespace JustAGame.UI
             _activeButtons.Clear();
         }
 
-        /// <summary>
-        /// Sends purchase command to the server with the selected item ID.
-        /// </summary>
+        // Send purchase request to server (ID only; zero-trust)
         public void RequestPurchase(int itemId)
         {
             if (targetMachine == null)
@@ -221,9 +204,6 @@ namespace JustAGame.UI
             targetMachine.CmdRequestPurchase(itemId);
         }
 
-        /// <summary>
-        /// Host-Only action: Asks the host to create another item with an incremented ID.
-        /// </summary>
         private void HandleHostCreateItemClicked()
         {
             if (targetMachine != null && NetworkServer.active)
@@ -247,10 +227,6 @@ namespace JustAGame.UI
             if (statusTMP != null)
             {
                 statusTMP.text = message;
-            }
-            if (statusText != null)
-            {
-                statusText.text = message;
             }
         }
     }

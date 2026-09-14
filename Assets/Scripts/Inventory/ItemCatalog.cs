@@ -3,10 +3,6 @@ using UnityEngine;
 
 namespace JustAGame.Inventory
 {
-    /// <summary>
-    /// Authoritative database of all purchasable items.
-    /// Used by the server/host to validate item IDs and enforce accurate prices.
-    /// </summary>
     [CreateAssetMenu(fileName = "ItemCatalog", menuName = "JustAGame/Item Catalog")]
     public class ItemCatalog : ScriptableObject
     {
@@ -35,9 +31,7 @@ namespace JustAGame.Inventory
             _isInitialized = true;
         }
 
-        /// <summary>
-        /// Attempt to retrieve item details by ID in O(1) time.
-        /// </summary>
+        // O(1) item lookup by ID
         public bool TryGetItem(int id, out ItemDefinition definition)
         {
             if (!_isInitialized || _itemLookup.Count != items.Count)

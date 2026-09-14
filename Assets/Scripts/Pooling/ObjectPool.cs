@@ -4,10 +4,7 @@ using UnityEngine;
 
 namespace JustAGame.Pooling
 {
-    /// <summary>
-    /// High-performance, allocation-free generic object pool.
-    /// Eliminates GC churn and memory fragmentation by reusing instances instead of calling Instantiate and Destroy.
-    /// </summary>
+    // Generic object pool to avoid Instantiate/Destroy GC allocations
     public class ObjectPool<T> where T : Component
     {
         private readonly T _prefab;
@@ -46,13 +43,9 @@ namespace JustAGame.Pooling
 
         private T CreateNewInstance()
         {
-            T instance = UnityEngine.Object.Instantiate(_prefab, _parent);
-            return instance;
+            return UnityEngine.Object.Instantiate(_prefab, _parent);
         }
 
-        /// <summary>
-        /// Retrieves an instance from the pool, or instantiates a new one if empty.
-        /// </summary>
         public T Get(Vector3 position = default, Quaternion rotation = default)
         {
             T instance;
@@ -69,7 +62,7 @@ namespace JustAGame.Pooling
                 }
             }
 
-            // Pool exhausted, instantiate new
+            // Pool exhausted; allocate new instance
             instance = CreateNewInstance();
             Transform newTransform = instance.transform;
             newTransform.SetPositionAndRotation(position, rotation);
@@ -78,9 +71,6 @@ namespace JustAGame.Pooling
             return instance;
         }
 
-        /// <summary>
-        /// Returns an active instance back to the pool.
-        /// </summary>
         public void Return(T instance)
         {
             if (instance == null) return;
@@ -94,9 +84,6 @@ namespace JustAGame.Pooling
             _pool.Enqueue(instance);
         }
 
-        /// <summary>
-        /// Clears all pooled instances and destroys them to prevent memory leaks when unloading.
-        /// </summary>
         public void Clear()
         {
             while (_pool.Count > 0)
@@ -110,9 +97,7 @@ namespace JustAGame.Pooling
         }
     }
 
-    /// <summary>
-    /// Component-based Object Pool for quick Inspector configuration in scenes.
-    /// </summary>
+    // Component-based GameObject pool for scene inspector setup
     public class GameObjectPool : MonoBehaviour
     {
         [SerializeField] private GameObject prefab;

@@ -4,14 +4,9 @@ using JustAGame.Inventory;
 
 namespace JustAGame.VendingMachine
 {
-    /// <summary>
-    /// Trigger area component placed on the Vending Machine GameObject.
-    /// Detects when the local player is in range and signals UI systems.
-    /// </summary>
     [RequireComponent(typeof(Collider))]
     public class VendingMachineTrigger : MonoBehaviour
     {
-        [Tooltip("Reference to the parent VendingMachine component.")]
         [SerializeField] private VendingMachine vendingMachine;
 
         public static event Action<VendingMachine> OnVendingMachineEntered;
@@ -29,11 +24,21 @@ namespace JustAGame.VendingMachine
             {
                 col.isTrigger = true;
             }
+
+            // Kinematic Rigidbody ensures CharacterController triggers PhysX collision events
+            var rb = GetComponent<Rigidbody>();
+            if (rb == null)
+            {
+                rb = gameObject.AddComponent<Rigidbody>();
+                rb.isKinematic = true;
+                rb.useGravity = false;
+            }
         }
 
         private void OnTriggerEnter(Collider other)
         {
-            var inventory = other.GetComponent<PlayerInventory>();
+            // Only trigger UI for the local player
+            var inventory = other.GetComponent<PlayerInventory>() ?? other.GetComponentInParent<PlayerInventory>();
             if (inventory != null && inventory.isOwned)
             {
                 OnVendingMachineEntered?.Invoke(vendingMachine);
@@ -42,7 +47,7 @@ namespace JustAGame.VendingMachine
 
         private void OnTriggerExit(Collider other)
         {
-            var inventory = other.GetComponent<PlayerInventory>();
+            var inventory = other.GetComponent<PlayerInventory>() ?? other.GetComponentInParent<PlayerInventory>();
             if (inventory != null && inventory.isOwned)
             {
                 OnVendingMachineExited?.Invoke(vendingMachine);
