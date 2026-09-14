@@ -1,3 +1,5 @@
+# Question 1
+
 Örneğin çok oyunculu bir araba tamir oyununda ayrım tek bir soruya dayanır: oyuna sonradan katılan (ya da alt-tab yapıp geri dönen) bir oyuncunun bu bilgiyi bilmesi gerekiyor mu? Cevap evetse **SyncVar**, sadece bir anlık duyusal an ise **RPC** kullanılır.
 
 ### Kalıcı durum (state) olan her şey için SyncVar kullanın:
@@ -26,6 +28,8 @@ Client, niyetini bir Command olarak gönderir (cıvatayı sıkmak, parça takmak
 Durum değişikliği ile o eylemin "hissi" bilinçli olarak birbirinden ayrılır: durum kalıcı olmalı ve senkronize edilmeli, geri bildirimin ise buna ihtiyacı yoktur ve olmamalıdır.
 
 ---
+
+# Question 2
 
 ### İstemcinin Fiyat Belirlemesi (price parametresi):
 En kritik güvenlik açığıdır. Bellek (RAM) manipülasyonu araçlarıyla (Cheat Engine vb.), tersine mühendislikle veya doğrudan ağ paketi enjeksiyonuyla istemci bu değeri manipüle edebilir. price değerini 0 yaparak tüm eşyaları ücretsiz alabilir; daha da kötüsü, negatif bir değer (örn. -999999) göndererek gold -= price işlemi üzerinden sınırsız para üretebilir. Fiyat asla istemciden parametre olarak alınmaz; sunucudaki veri kaynağından (ScriptableObject, DB) çekilmelidir.
