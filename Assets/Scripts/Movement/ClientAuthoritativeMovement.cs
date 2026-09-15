@@ -27,11 +27,6 @@ namespace JustAGame.Movement
             base.OnStartAuthority();
             _mainCamera = Camera.main;
 
-            if (CameraFollow.Instance != null)
-            {
-                CameraFollow.Instance.SetTarget(transform);
-            }
-
             // Ensure NetworkTransform syncs client inputs to server
             var networkTransform = GetComponent<NetworkTransformBase>();
             if (networkTransform != null)
