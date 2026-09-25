@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -13,38 +14,80 @@ namespace JustAGame.Inventory
 
         private void OnEnable()
         {
-            InitializeLookup();
+            try
+            {
+                InitializeLookup();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[ItemCatalog] Exception in OnEnable: {ex.Message}");
+            }
         }
 
         public void InitializeLookup()
         {
-            _itemLookup.Clear();
-            if (items == null) return;
-
-            foreach (var item in items)
+            try
             {
-                if (item != null && !_itemLookup.ContainsKey(item.Id))
+                _itemLookup.Clear();
+
+                if (items.IsNull())
                 {
-                    _itemLookup.Add(item.Id, item);
+                    Debug.LogWarning("[ItemCatalog] Items list is null during InitializeLookup.");
+                    _isInitialized = false;
+                    return;
+                }
+                else
+                {
+                    for (int i = 0; i < items.Count; i++)
+                    {
+                        ItemDefinition item = items[i];
+                        if (item.IsNotNull() && !_itemLookup.ContainsKey(item.Id))
+                        {
+                            _itemLookup.Add(item.Id, item);
+                        }
+                        else
+                        {
+                            // Skip null items or duplicate IDs
+                        }
+                    }
+                    _isInitialized = true;
                 }
             }
-            _isInitialized = true;
+            catch (Exception ex)
+            {
+                Debug.LogError($"[ItemCatalog] Exception in InitializeLookup: {ex.Message}");
+                _isInitialized = false;
+            }
         }
 
         // O(1) item lookup by ID
         public bool TryGetItem(int id, out ItemDefinition definition)
         {
-            if (!_isInitialized || _itemLookup.Count != items.Count)
+            try
             {
-                InitializeLookup();
-            }
+                int itemsCount = items.IsNotNull() ? items.Count : 0;
+                if (!_isInitialized || _itemLookup.Count != itemsCount)
+                {
+                    InitializeLookup();
+                }
+                else
+                {
+                    // Lookup table is up to date
+                }
 
-            return _itemLookup.TryGetValue(id, out definition);
+                return _itemLookup.TryGetValue(id, out definition);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[ItemCatalog] Exception in TryGetItem for ID {id}: {ex.Message}");
+                definition = null;
+                return false;
+            }
         }
 
         public IReadOnlyList<ItemDefinition> GetAllItems()
         {
-            return items;
+            return items.IsNotNull() ? items : Array.Empty<ItemDefinition>();
         }
     }
 }

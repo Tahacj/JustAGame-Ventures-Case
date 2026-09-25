@@ -1,3 +1,4 @@
+using System;
 using Mirror;
 using UnityEngine;
 #if ENABLE_INPUT_SYSTEM
@@ -19,107 +20,194 @@ namespace JustAGame.Movement
 
         private void Awake()
         {
-            _characterController = GetComponent<CharacterController>();
+            try
+            {
+                _characterController = this.GetComponentOrNull<CharacterController>();
+                if (_characterController.IsNull())
+                {
+                    Debug.LogError($"[ClientAuthoritativeMovement] CharacterController not found on {name}.");
+                }
+                else
+                {
+                    // CharacterController successfully acquired
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[ClientAuthoritativeMovement] Exception in Awake: {ex.Message}");
+            }
         }
 
         public override void OnStartAuthority()
         {
-            base.OnStartAuthority();
-            _mainCamera = Camera.main;
-
-            // Ensure NetworkTransform syncs client inputs to server
-            var networkTransform = GetComponent<NetworkTransformBase>();
-            if (networkTransform != null)
+            try
             {
-                networkTransform.syncDirection = SyncDirection.ClientToServer;
+                base.OnStartAuthority();
+                _mainCamera = Camera.main;
+
+                // Ensure NetworkTransform syncs client inputs to server
+                var networkTransform = this.GetComponentOrNull<NetworkTransformBase>();
+                if (networkTransform.IsNotNull())
+                {
+                    networkTransform.syncDirection = SyncDirection.ClientToServer;
+                }
+                else
+                {
+                    Debug.LogWarning($"[ClientAuthoritativeMovement] NetworkTransformBase not found on {name}.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[ClientAuthoritativeMovement] Exception in OnStartAuthority: {ex.Message}");
             }
         }
 
         private void Update()
         {
-            // Only the owning client processes local input
-            if (!isOwned) return;
-
-            HandleMovement();
+            try
+            {
+                // Only the owning client processes local input
+                if (!isOwned)
+                {
+                    return;
+                }
+                else
+                {
+                    HandleMovement();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[ClientAuthoritativeMovement] Exception in Update: {ex.Message}");
+            }
         }
 
         private void HandleMovement()
         {
-            Vector2 input = GetMovementInput();
-            Vector3 direction = new Vector3(input.x, 0f, input.y);
-
-            // Align movement with camera orientation
-            if (_mainCamera != null && direction.sqrMagnitude > 0.001f)
+            try
             {
-                Vector3 camForward = _mainCamera.transform.forward;
-                Vector3 camRight = _mainCamera.transform.right;
-                camForward.y = 0f;
-                camRight.y = 0f;
-                camForward.Normalize();
-                camRight.Normalize();
+                if (_characterController.IsNull())
+                {
+                    return;
+                }
+                else
+                {
+                    Vector2 input = GetMovementInput();
+                    Vector3 direction = new Vector3(input.x, 0f, input.y);
 
-                direction = (camForward * direction.z + camRight * direction.x).normalized;
+                    // Align movement with camera orientation
+                    if (_mainCamera.IsNotNull() && direction.sqrMagnitude > 0.001f)
+                    {
+                        Vector3 camForward = _mainCamera.transform.forward;
+                        Vector3 camRight = _mainCamera.transform.right;
+                        camForward.y = 0f;
+                        camRight.y = 0f;
+                        camForward.Normalize();
+                        camRight.Normalize();
+
+                        direction = (camForward * direction.z + camRight * direction.x).normalized;
+                    }
+                    else
+                    {
+                        // Camera unavailable or character idle
+                    }
+
+                    Vector3 motion = direction * (moveSpeed * Time.deltaTime);
+
+                    // Apply gravity and ground check
+                    if (_characterController.isGrounded && _velocity.y < 0)
+                    {
+                        _velocity.y = -2f;
+                    }
+                    else
+                    {
+                        _velocity.y += gravity * Time.deltaTime;
+                    }
+
+                    motion.y = _velocity.y * Time.deltaTime;
+                    _characterController.Move(motion);
+
+                    // Smoothly rotate towards movement direction
+                    if (direction.sqrMagnitude > 0.001f)
+                    {
+                        Quaternion targetRotation = Quaternion.LookRotation(new Vector3(direction.x, 0f, direction.z));
+                        transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
+                    }
+                    else
+                    {
+                        // Maintain current rotation
+                    }
+                }
             }
-
-            Vector3 motion = direction * (moveSpeed * Time.deltaTime);
-
-            // Apply gravity and ground check
-            if (_characterController.isGrounded && _velocity.y < 0)
+            catch (Exception ex)
             {
-                _velocity.y = -2f;
-            }
-            else
-            {
-                _velocity.y += gravity * Time.deltaTime;
-            }
-
-            motion.y = _velocity.y * Time.deltaTime;
-            _characterController.Move(motion);
-
-            // Smoothly rotate towards movement direction
-            if (direction.sqrMagnitude > 0.001f)
-            {
-                Quaternion targetRotation = Quaternion.LookRotation(new Vector3(direction.x, 0f, direction.z));
-                transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
+                Debug.LogError($"[ClientAuthoritativeMovement] Exception in HandleMovement: {ex.Message}");
             }
         }
 
         // Cross-compatible input reading for New and Legacy Input System
         private Vector2 GetMovementInput()
         {
-            Vector2 input = Vector2.zero;
+            try
+            {
+                Vector2 input = Vector2.zero;
 
 #if ENABLE_INPUT_SYSTEM
-            if (Keyboard.current != null)
-            {
-                float x = 0f;
-                float y = 0f;
-                if (Keyboard.current.wKey.isPressed || Keyboard.current.upArrowKey.isPressed) y += 1f;
-                if (Keyboard.current.sKey.isPressed || Keyboard.current.downArrowKey.isPressed) y -= 1f;
-                if (Keyboard.current.aKey.isPressed || Keyboard.current.leftArrowKey.isPressed) x -= 1f;
-                if (Keyboard.current.dKey.isPressed || Keyboard.current.rightArrowKey.isPressed) x += 1f;
-                input = new Vector2(x, y);
-            }
+                if (Keyboard.current.IsNotNull())
+                {
+                    float x = 0f;
+                    float y = 0f;
+                    if (Keyboard.current.wKey.isPressed || Keyboard.current.upArrowKey.isPressed) y += 1f;
+                    if (Keyboard.current.sKey.isPressed || Keyboard.current.downArrowKey.isPressed) y -= 1f;
+                    if (Keyboard.current.aKey.isPressed || Keyboard.current.leftArrowKey.isPressed) x -= 1f;
+                    if (Keyboard.current.dKey.isPressed || Keyboard.current.rightArrowKey.isPressed) x += 1f;
+                    input = new Vector2(x, y);
+                }
+                else
+                {
+                    // Keyboard not available
+                }
 
-            if (Gamepad.current != null && input.sqrMagnitude < 0.001f)
-            {
-                input = Gamepad.current.leftStick.ReadValue();
-            }
+                if (Gamepad.current.IsNotNull() && input.sqrMagnitude < 0.001f)
+                {
+                    input = Gamepad.current.leftStick.ReadValue();
+                }
+                else
+                {
+                    // Gamepad not connected or input already captured
+                }
 #else
-            input.x = Input.GetAxisRaw("Horizontal");
-            input.y = Input.GetAxisRaw("Vertical");
+                input.x = Input.GetAxisRaw("Horizontal");
+                input.y = Input.GetAxisRaw("Vertical");
 #endif
 
-            return Vector2.ClampMagnitude(input, 1.0f);
+                return Vector2.ClampMagnitude(input, 1.0f);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[ClientAuthoritativeMovement] Exception in GetMovementInput: {ex.Message}");
+                return Vector2.zero;
+            }
         }
 
         protected override void OnValidate()
         {
-            base.OnValidate();
-            var nt = GetComponent<NetworkTransformBase>();
-            if (nt != null && nt.syncDirection != SyncDirection.ClientToServer)
+            try
             {
-                nt.syncDirection = SyncDirection.ClientToServer;
+                base.OnValidate();
+                var nt = this.GetComponentOrNull<NetworkTransformBase>();
+                if (nt.IsNotNull() && nt.syncDirection != SyncDirection.ClientToServer)
+                {
+                    nt.syncDirection = SyncDirection.ClientToServer;
+                }
+                else
+                {
+                    // Already configured or component not present
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[ClientAuthoritativeMovement] Exception in OnValidate: {ex.Message}");
             }
         }
     }

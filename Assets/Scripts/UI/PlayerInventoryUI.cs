@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
@@ -23,114 +24,222 @@ namespace JustAGame.UI
 
         private void OnEnable()
         {
-            PlayerInventory.OnLocalPlayerReady += BindInventory;
-            PlayerInventory.OnLocalPlayerRemoved += UnbindInventory;
+            try
+            {
+                PlayerInventory.OnLocalPlayerReady += BindInventory;
+                PlayerInventory.OnLocalPlayerRemoved += UnbindInventory;
 
-            if (PlayerInventory.LocalPlayer != null)
-            {
-                BindInventory(PlayerInventory.LocalPlayer);
+                if (PlayerInventory.LocalPlayer.IsNotNull())
+                {
+                    BindInventory(PlayerInventory.LocalPlayer);
+                }
+                else
+                {
+                    UpdateMoneyDisplay(0);
+                    UpdateItemsDisplay(null);
+                }
             }
-            else
+            catch (Exception ex)
             {
-                UpdateMoneyDisplay(0);
-                UpdateItemsDisplay(null);
+                Debug.LogError($"[PlayerInventoryUI] Exception in OnEnable: {ex.Message}");
             }
         }
 
         private void OnDisable()
         {
-            PlayerInventory.OnLocalPlayerReady -= BindInventory;
-            PlayerInventory.OnLocalPlayerRemoved -= UnbindInventory;
+            try
+            {
+                PlayerInventory.OnLocalPlayerReady -= BindInventory;
+                PlayerInventory.OnLocalPlayerRemoved -= UnbindInventory;
 
-            UnbindInventory(_boundInventory);
+                UnbindInventory(_boundInventory);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[PlayerInventoryUI] Exception in OnDisable: {ex.Message}");
+            }
         }
 
         private void OnDestroy()
         {
-            UnbindInventory(_boundInventory);
+            try
+            {
+                UnbindInventory(_boundInventory);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[PlayerInventoryUI] Exception in OnDestroy: {ex.Message}");
+            }
         }
 
         private void BindInventory(PlayerInventory inventory)
         {
-            if (inventory == null || _boundInventory == inventory) return;
-
-            if (_boundInventory != null)
+            try
             {
-                UnbindInventory(_boundInventory);
+                if (inventory.IsNull() || _boundInventory == inventory)
+                {
+                    return;
+                }
+                else
+                {
+                    if (_boundInventory.IsNotNull())
+                    {
+                        UnbindInventory(_boundInventory);
+                    }
+                    else
+                    {
+                        // No previous inventory bound
+                    }
+
+                    _boundInventory = inventory;
+                    _boundInventory.OnMoneyUpdated += OnMoneyChanged;
+                    _boundInventory.OnInventoryUpdated += OnInventoryChanged;
+
+                    UpdateMoneyDisplay(_boundInventory.Money);
+                    UpdateItemsDisplay(_boundInventory.Items);
+                }
             }
-
-            _boundInventory = inventory;
-            _boundInventory.OnMoneyUpdated += OnMoneyChanged;
-            _boundInventory.OnInventoryUpdated += OnInventoryChanged;
-
-            UpdateMoneyDisplay(_boundInventory.Money);
-            UpdateItemsDisplay(_boundInventory.Items);
+            catch (Exception ex)
+            {
+                Debug.LogError($"[PlayerInventoryUI] Exception in BindInventory: {ex.Message}");
+            }
         }
 
         private void UnbindInventory(PlayerInventory inventory)
         {
-            if (_boundInventory != null && _boundInventory == inventory)
+            try
             {
-                _boundInventory.OnMoneyUpdated -= OnMoneyChanged;
-                _boundInventory.OnInventoryUpdated -= OnInventoryChanged;
-                _boundInventory = null;
+                if (_boundInventory.IsNotNull() && _boundInventory == inventory)
+                {
+                    _boundInventory.OnMoneyUpdated -= OnMoneyChanged;
+                    _boundInventory.OnInventoryUpdated -= OnInventoryChanged;
+                    _boundInventory = null;
+                }
+                else
+                {
+                    // Target inventory was not the bound instance
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[PlayerInventoryUI] Exception in UnbindInventory: {ex.Message}");
             }
         }
 
         private void OnMoneyChanged(int newMoney, int previousMoney)
         {
-            UpdateMoneyDisplay(newMoney);
+            try
+            {
+                UpdateMoneyDisplay(newMoney);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[PlayerInventoryUI] Exception in OnMoneyChanged: {ex.Message}");
+            }
         }
 
         private void OnInventoryChanged(IReadOnlyList<ItemData> items)
         {
-            UpdateItemsDisplay(items);
+            try
+            {
+                UpdateItemsDisplay(items);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[PlayerInventoryUI] Exception in OnInventoryChanged: {ex.Message}");
+            }
         }
 
         private void UpdateMoneyDisplay(int money)
         {
-            if (moneyTMP != null)
+            try
             {
-                moneyTMP.text = string.Format(moneyFormat, money);
+                if (moneyTMP.IsNotNull())
+                {
+                    moneyTMP.text = string.Format(moneyFormat, money);
+                }
+                else
+                {
+                    Debug.LogWarning("[PlayerInventoryUI] moneyTMP reference is null.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[PlayerInventoryUI] Exception in UpdateMoneyDisplay: {ex.Message}");
             }
         }
 
         // Formats inventory items into "1 - 3 - 7 - 9 - 5" without GC allocations
         private void UpdateItemsDisplay(IReadOnlyList<ItemData> items)
         {
-            if (items == null || items.Count == 0)
+            try
             {
-                SetItemText(emptyInventoryPlaceholder);
-                return;
-            }
-
-            _cachedStringBuilder.Clear();
-
-            for (int i = 0; i < items.Count; i++)
-            {
-                if (i > 0)
+                if (items.IsNull() || items.Count == 0)
                 {
-                    _cachedStringBuilder.Append(itemDelimiter);
+                    SetItemText(emptyInventoryPlaceholder);
+                    return;
                 }
-                _cachedStringBuilder.Append(items[i].id);
-            }
+                else
+                {
+                    _cachedStringBuilder.Clear();
 
-            SetItemText(_cachedStringBuilder.ToString());
+                    for (int i = 0; i < items.Count; i++)
+                    {
+                        if (i > 0)
+                        {
+                            _cachedStringBuilder.Append(itemDelimiter);
+                        }
+                        else
+                        {
+                            // First element, no prefix delimiter
+                        }
+                        _cachedStringBuilder.Append(items[i].id);
+                    }
+
+                    SetItemText(_cachedStringBuilder.ToString());
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[PlayerInventoryUI] Exception in UpdateItemsDisplay: {ex.Message}");
+            }
         }
 
         private void SetItemText(string text)
         {
-            if (inventoryItemsTMP != null)
+            try
             {
-                inventoryItemsTMP.text = text;
+                if (inventoryItemsTMP.IsNotNull())
+                {
+                    inventoryItemsTMP.text = text;
+                }
+                else
+                {
+                    Debug.LogWarning("[PlayerInventoryUI] inventoryItemsTMP reference is null.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[PlayerInventoryUI] Exception in SetItemText: {ex.Message}");
             }
         }
 
         public void SetNotification(string message)
         {
-            if (notificationTMP != null)
+            try
             {
-                notificationTMP.text = message;
+                if (notificationTMP.IsNotNull())
+                {
+                    notificationTMP.text = message;
+                }
+                else
+                {
+                    Debug.LogWarning("[PlayerInventoryUI] notificationTMP reference is null.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[PlayerInventoryUI] Exception in SetNotification: {ex.Message}");
             }
         }
     }

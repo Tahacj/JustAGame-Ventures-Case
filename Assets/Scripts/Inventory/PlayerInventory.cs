@@ -29,55 +29,110 @@ namespace JustAGame.Inventory
 
         public override void OnStartServer()
         {
-            base.OnStartServer();
-            _money = defaultStartingMoney;
+            try
+            {
+                base.OnStartServer();
+                _money = defaultStartingMoney;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[PlayerInventory] Exception in OnStartServer: {ex.Message}");
+            }
         }
 
         public override void OnStartClient()
         {
-            base.OnStartClient();
-            _items.Callback += OnSyncListCallback;
-
-            if (isOwned)
+            try
             {
-                LocalPlayer = this;
-                OnLocalPlayerReady?.Invoke(this);
-            }
+                base.OnStartClient();
+                _items.Callback += OnSyncListCallback;
 
-            OnMoneyUpdated?.Invoke(_money, _money);
-            OnInventoryUpdated?.Invoke(_items);
+                if (isOwned)
+                {
+                    LocalPlayer = this;
+                    OnLocalPlayerReady?.Invoke(this);
+                }
+                else
+                {
+                    // Remote player instance; not local player
+                }
+
+                OnMoneyUpdated?.Invoke(_money, _money);
+                OnInventoryUpdated?.Invoke(_items);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[PlayerInventory] Exception in OnStartClient: {ex.Message}");
+            }
         }
 
         public override void OnStopClient()
         {
-            _items.Callback -= OnSyncListCallback;
-
-            if (isOwned && LocalPlayer == this)
+            try
             {
-                OnLocalPlayerRemoved?.Invoke(this);
-                LocalPlayer = null;
-            }
+                _items.Callback -= OnSyncListCallback;
 
-            base.OnStopClient();
+                if (isOwned && LocalPlayer == this)
+                {
+                    OnLocalPlayerRemoved?.Invoke(this);
+                    LocalPlayer = null;
+                }
+                else
+                {
+                    // Remote player cleanup
+                }
+
+                base.OnStopClient();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[PlayerInventory] Exception in OnStopClient: {ex.Message}");
+            }
         }
 
         private void OnDestroy()
         {
-            _items.Callback -= OnSyncListCallback;
-            if (LocalPlayer == this)
+            try
             {
-                LocalPlayer = null;
+                _items.Callback -= OnSyncListCallback;
+
+                if (LocalPlayer == this)
+                {
+                    LocalPlayer = null;
+                }
+                else
+                {
+                    // Not local player singleton
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[PlayerInventory] Exception in OnDestroy: {ex.Message}");
             }
         }
 
         private void OnMoneyChangedInternal(int oldMoney, int newMoney)
         {
-            OnMoneyUpdated?.Invoke(newMoney, oldMoney);
+            try
+            {
+                OnMoneyUpdated?.Invoke(newMoney, oldMoney);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[PlayerInventory] Exception in OnMoneyChangedInternal: {ex.Message}");
+            }
         }
 
         private void OnSyncListCallback(SyncList<ItemData>.Operation op, int itemIndex, ItemData oldItem, ItemData newItem)
         {
-            OnInventoryUpdated?.Invoke(_items);
+            try
+            {
+                OnInventoryUpdated?.Invoke(_items);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[PlayerInventory] Exception in OnSyncListCallback: {ex.Message}");
+            }
         }
 
         #region Server Authoritative Methods
@@ -91,42 +146,95 @@ namespace JustAGame.Inventory
         [Server]
         public bool ServerDeductMoney(int amount)
         {
-            if (amount < 0 || _money < amount) return false;
-            _money -= amount;
-            return true;
+            try
+            {
+                if (amount < 0 || _money < amount)
+                {
+                    return false;
+                }
+                else
+                {
+                    _money -= amount;
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[PlayerInventory] Exception in ServerDeductMoney: {ex.Message}");
+                return false;
+            }
         }
 
         [Server]
         public void ServerAddMoney(int amount)
         {
-            if (amount <= 0) return;
-            _money += amount;
+            try
+            {
+                if (amount <= 0)
+                {
+                    return;
+                }
+                else
+                {
+                    _money += amount;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[PlayerInventory] Exception in ServerAddMoney: {ex.Message}");
+            }
         }
 
         [Server]
         public void ServerAddItem(ItemData item)
         {
-            _items.Add(item);
+            try
+            {
+                _items.Add(item);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[PlayerInventory] Exception in ServerAddItem: {ex.Message}");
+            }
         }
 
         [Server]
         public bool ServerRemoveItem(string uniqueIdentifier)
         {
-            for (int i = 0; i < _items.Count; i++)
+            try
             {
-                if (string.Equals(_items[i].uniqueIdentifier, uniqueIdentifier, StringComparison.Ordinal))
+                for (int i = 0; i < _items.Count; i++)
                 {
-                    _items.RemoveAt(i);
-                    return true;
+                    if (string.Equals(_items[i].uniqueIdentifier, uniqueIdentifier, StringComparison.Ordinal))
+                    {
+                        _items.RemoveAt(i);
+                        return true;
+                    }
+                    else
+                    {
+                        continue;
+                    }
                 }
+                return false;
             }
-            return false;
+            catch (Exception ex)
+            {
+                Debug.LogError($"[PlayerInventory] Exception in ServerRemoveItem: {ex.Message}");
+                return false;
+            }
         }
 
         [Server]
         public void ServerSetMoney(int newAmount)
         {
-            _money = Mathf.Max(0, newAmount);
+            try
+            {
+                _money = Mathf.Max(0, newAmount);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[PlayerInventory] Exception in ServerSetMoney: {ex.Message}");
+            }
         }
 
         #endregion

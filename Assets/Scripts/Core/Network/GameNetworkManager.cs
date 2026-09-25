@@ -18,69 +18,137 @@ namespace JustAGame.Core.Network
 
         public override Transform GetStartPosition()
         {
-            // Use manual spawn points if assigned; otherwise fallback to Mirror defaults
-            if (spawnPoints != null && spawnPoints.Length > 0)
+            try
             {
-                var validPoints = Array.FindAll(spawnPoints, p => p != null);
-                if (validPoints.Length > 0)
+                // Use manual spawn points if assigned; otherwise fallback to Mirror defaults
+                if (spawnPoints.IsNotNull() && spawnPoints.Length > 0)
                 {
-                    if (playerSpawnMethod == PlayerSpawnMethod.Random)
+                    var validPoints = Array.FindAll(spawnPoints, p => p.IsNotNull());
+                    if (validPoints.Length > 0)
                     {
-                        return validPoints[UnityEngine.Random.Range(0, validPoints.Length)];
+                        if (playerSpawnMethod == PlayerSpawnMethod.Random)
+                        {
+                            return validPoints[UnityEngine.Random.Range(0, validPoints.Length)];
+                        }
+                        else
+                        {
+                            Transform point = validPoints[_manualSpawnIndex % validPoints.Length];
+                            _manualSpawnIndex = (_manualSpawnIndex + 1) % validPoints.Length;
+                            return point;
+                        }
                     }
-
-                    Transform point = validPoints[_manualSpawnIndex % validPoints.Length];
-                    _manualSpawnIndex = (_manualSpawnIndex + 1) % validPoints.Length;
-                    return point;
+                    else
+                    {
+                        return base.GetStartPosition();
+                    }
+                }
+                else
+                {
+                    return base.GetStartPosition();
                 }
             }
-
-            return base.GetStartPosition();
+            catch (Exception ex)
+            {
+                Debug.LogError($"[GameNetworkManager] Exception in GetStartPosition: {ex.Message}");
+                return base.GetStartPosition();
+            }
         }
 
         public override void OnServerAddPlayer(NetworkConnectionToClient conn)
         {
-            base.OnServerAddPlayer(conn);
-
-            // Register host inventory when local host player spawns
-            if (conn == NetworkServer.localConnection && conn.identity != null)
+            try
             {
-                var inventory = conn.identity.GetComponent<PlayerInventory>();
-                if (inventory != null)
+                base.OnServerAddPlayer(conn);
+
+                // Register host inventory when local host player spawns
+                if (conn == NetworkServer.localConnection && conn.identity.IsNotNull())
                 {
-                    HostInventory = inventory;
-                    OnHostInventoryAssigned?.Invoke(inventory);
+                    var inventory = conn.identity.GetComponentOrNull<PlayerInventory>();
+                    if (inventory.IsNotNull())
+                    {
+                        HostInventory = inventory;
+                        OnHostInventoryAssigned?.Invoke(inventory);
+                    }
+                    else
+                    {
+                        Debug.LogWarning("[GameNetworkManager] PlayerInventory component not found on local host player.");
+                    }
                 }
+                else
+                {
+                    // Remote player connected or host identity not spawned
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[GameNetworkManager] Exception in OnServerAddPlayer: {ex.Message}");
             }
         }
 
         public override void OnServerDisconnect(NetworkConnectionToClient conn)
         {
-            if (conn == NetworkServer.localConnection)
+            try
             {
-                HostInventory = null;
-            }
+                if (conn == NetworkServer.localConnection)
+                {
+                    HostInventory = null;
+                }
+                else
+                {
+                    // Non-host client disconnected
+                }
 
-            base.OnServerDisconnect(conn);
+                base.OnServerDisconnect(conn);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[GameNetworkManager] Exception in OnServerDisconnect: {ex.Message}");
+                base.OnServerDisconnect(conn);
+            }
         }
 
         public override void OnStopServer()
         {
-            HostInventory = null;
-            base.OnStopServer();
+            try
+            {
+                HostInventory = null;
+                base.OnStopServer();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[GameNetworkManager] Exception in OnStopServer: {ex.Message}");
+                base.OnStopServer();
+            }
         }
 
         // Resolves host inventory reference on the server
         public static PlayerInventory GetHostInventory()
         {
-            if (HostInventory != null) return HostInventory;
-
-            if (NetworkServer.localConnection != null && NetworkServer.localConnection.identity != null)
+            try
             {
-                HostInventory = NetworkServer.localConnection.identity.GetComponent<PlayerInventory>();
-            }
+                if (HostInventory.IsNotNull())
+                {
+                    return HostInventory;
+                }
+                else
+                {
+                    if (NetworkServer.localConnection.IsNotNull() && NetworkServer.localConnection.identity.IsNotNull())
+                    {
+                        HostInventory = NetworkServer.localConnection.identity.GetComponentOrNull<PlayerInventory>();
+                    }
+                    else
+                    {
+                        // Local host connection not available
+                    }
 
-            return HostInventory;
+                    return HostInventory;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[GameNetworkManager] Exception in GetHostInventory: {ex.Message}");
+                return null;
+            }
         }
     }
 }

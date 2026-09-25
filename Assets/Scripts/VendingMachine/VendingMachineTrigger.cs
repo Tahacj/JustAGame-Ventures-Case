@@ -14,43 +14,94 @@ namespace JustAGame.VendingMachine
 
         private void Awake()
         {
-            if (vendingMachine == null)
+            try
             {
-                vendingMachine = GetComponent<VendingMachine>() ?? GetComponentInParent<VendingMachine>();
-            }
+                vendingMachine = vendingMachine.IsNotNull() 
+                    ? vendingMachine 
+                    : (this.GetComponentOrNull<VendingMachine>() ?? GetComponentInParent<VendingMachine>());
 
-            var col = GetComponent<Collider>();
-            if (col != null)
-            {
-                col.isTrigger = true;
-            }
+                var col = this.GetComponentOrNull<Collider>();
+                if (col.IsNotNull())
+                {
+                    col.isTrigger = true;
+                }
+                else
+                {
+                    Debug.LogWarning($"[VendingMachineTrigger] Collider not found on {name}.");
+                }
 
-            // Kinematic Rigidbody ensures CharacterController triggers PhysX collision events
-            var rb = GetComponent<Rigidbody>();
-            if (rb == null)
+                // Kinematic Rigidbody ensures CharacterController triggers PhysX collision events
+                var rb = this.GetComponentOrNull<Rigidbody>();
+                if (rb.IsNull())
+                {
+                    rb = gameObject.AddComponent<Rigidbody>();
+                    rb.isKinematic = true;
+                    rb.useGravity = false;
+                }
+                else
+                {
+                    rb.isKinematic = true;
+                    rb.useGravity = false;
+                }
+            }
+            catch (Exception ex)
             {
-                rb = gameObject.AddComponent<Rigidbody>();
-                rb.isKinematic = true;
-                rb.useGravity = false;
+                Debug.LogError($"[VendingMachineTrigger] Exception in Awake: {ex.Message}");
             }
         }
 
         private void OnTriggerEnter(Collider other)
         {
-            // Only trigger UI for the local player
-            var inventory = other.GetComponent<PlayerInventory>() ?? other.GetComponentInParent<PlayerInventory>();
-            if (inventory != null && inventory.isOwned)
+            try
             {
-                OnVendingMachineEntered?.Invoke(vendingMachine);
+                if (other.IsNull())
+                {
+                    return;
+                }
+                else
+                {
+                    // Only trigger UI for the local player
+                    var inventory = other.GetComponent<PlayerInventory>() ?? other.GetComponentInParent<PlayerInventory>();
+                    if (inventory.IsNotNull() && inventory.isOwned)
+                    {
+                        OnVendingMachineEntered?.Invoke(vendingMachine);
+                    }
+                    else
+                    {
+                        // Ignore collision from non-player or non-owned entities
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[VendingMachineTrigger] Exception in OnTriggerEnter: {ex.Message}");
             }
         }
 
         private void OnTriggerExit(Collider other)
         {
-            var inventory = other.GetComponent<PlayerInventory>() ?? other.GetComponentInParent<PlayerInventory>();
-            if (inventory != null && inventory.isOwned)
+            try
             {
-                OnVendingMachineExited?.Invoke(vendingMachine);
+                if (other.IsNull())
+                {
+                    return;
+                }
+                else
+                {
+                    var inventory = other.GetComponent<PlayerInventory>() ?? other.GetComponentInParent<PlayerInventory>();
+                    if (inventory.IsNotNull() && inventory.isOwned)
+                    {
+                        OnVendingMachineExited?.Invoke(vendingMachine);
+                    }
+                    else
+                    {
+                        // Ignore trigger exit from non-player entities
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[VendingMachineTrigger] Exception in OnTriggerExit: {ex.Message}");
             }
         }
     }
