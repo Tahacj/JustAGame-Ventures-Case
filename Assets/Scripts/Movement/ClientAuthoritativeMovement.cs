@@ -17,6 +17,7 @@ namespace JustAGame.Movement
         private CharacterController _characterController;
         private Camera _mainCamera;
         private Vector3 _velocity;
+        private JustAGame.Core.Network.EOSPlayerStatsTracker _statsTracker;
 
         private void Awake()
         {
@@ -55,6 +56,19 @@ namespace JustAGame.Movement
                 {
                     Debug.LogWarning($"[ClientAuthoritativeMovement] NetworkTransformBase not found on {name}.");
                 }
+
+                // Initialize local player stats and distance tracking
+                _statsTracker = this.GetComponentOrNull<JustAGame.Core.Network.EOSPlayerStatsTracker>();
+                if (_statsTracker.IsNull())
+                {
+                    _statsTracker = gameObject.AddComponent<JustAGame.Core.Network.EOSPlayerStatsTracker>();
+                }
+                else
+                {
+                    // Already attached
+                }
+
+                _statsTracker.InitializeLocal();
             }
             catch (Exception ex)
             {
@@ -66,14 +80,21 @@ namespace JustAGame.Movement
         {
             try
             {
-                // Only the owning client processes local input
+                // Only the owning client processes local input once client is ready
                 if (!isOwned)
                 {
                     return;
                 }
                 else
                 {
-                    HandleMovement();
+                    if (!NetworkClient.ready)
+                    {
+                        return;
+                    }
+                    else
+                    {
+                        HandleMovement();
+                    }
                 }
             }
             catch (Exception ex)
@@ -127,6 +148,18 @@ namespace JustAGame.Movement
                     motion.y = _velocity.y * Time.deltaTime;
                     _characterController.Move(motion);
 
+                    // Track horizontal walking distance on local authoritative client
+                    Vector3 horizontalMotion = new Vector3(motion.x, 0f, motion.z);
+                    float stepDistance = horizontalMotion.magnitude;
+                    if (stepDistance > 0.0001f && _statsTracker.IsNotNull())
+                    {
+                        _statsTracker.AddWalkedDistance(stepDistance);
+                    }
+                    else
+                    {
+                        // Idle or stationary
+                    }
+
                     // Smoothly rotate towards movement direction
                     if (direction.sqrMagnitude > 0.001f)
                     {
@@ -157,10 +190,43 @@ namespace JustAGame.Movement
                 {
                     float x = 0f;
                     float y = 0f;
-                    if (Keyboard.current.wKey.isPressed || Keyboard.current.upArrowKey.isPressed) y += 1f;
-                    if (Keyboard.current.sKey.isPressed || Keyboard.current.downArrowKey.isPressed) y -= 1f;
-                    if (Keyboard.current.aKey.isPressed || Keyboard.current.leftArrowKey.isPressed) x -= 1f;
-                    if (Keyboard.current.dKey.isPressed || Keyboard.current.rightArrowKey.isPressed) x += 1f;
+
+                    if (Keyboard.current.wKey.isPressed || Keyboard.current.upArrowKey.isPressed)
+                    {
+                        y += 1f;
+                    }
+                    else
+                    {
+                        // No forward input
+                    }
+
+                    if (Keyboard.current.sKey.isPressed || Keyboard.current.downArrowKey.isPressed)
+                    {
+                        y -= 1f;
+                    }
+                    else
+                    {
+                        // No backward input
+                    }
+
+                    if (Keyboard.current.aKey.isPressed || Keyboard.current.leftArrowKey.isPressed)
+                    {
+                        x -= 1f;
+                    }
+                    else
+                    {
+                        // No leftward input
+                    }
+
+                    if (Keyboard.current.dKey.isPressed || Keyboard.current.rightArrowKey.isPressed)
+                    {
+                        x += 1f;
+                    }
+                    else
+                    {
+                        // No rightward input
+                    }
+
                     input = new Vector2(x, y);
                 }
                 else

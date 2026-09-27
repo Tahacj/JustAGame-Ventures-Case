@@ -133,6 +133,48 @@ namespace JustAGame
                 return null;
             }
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static TComponent GetComponentInParentOrNull<TComponent>(this Component component, bool includeInactive = true) where TComponent : Component
+        {
+            try
+            {
+                if (component.IsNull())
+                {
+                    return null;
+                }
+                else
+                {
+                    return component.GetComponentInParent<TComponent>(includeInactive);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[ObjectExtensions] Failed to GetComponentInParentOrNull<{typeof(TComponent).Name}>: {ex.Message}");
+                return null;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static TComponent GetComponentInParentOrNull<TComponent>(this GameObject gameObject, bool includeInactive = true) where TComponent : Component
+        {
+            try
+            {
+                if (gameObject.IsNull())
+                {
+                    return null;
+                }
+                else
+                {
+                    return gameObject.GetComponentInParent<TComponent>(includeInactive);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[ObjectExtensions] Failed to GetComponentInParentOrNull<{typeof(TComponent).Name}>: {ex.Message}");
+                return null;
+            }
+        }
     }
 }
 

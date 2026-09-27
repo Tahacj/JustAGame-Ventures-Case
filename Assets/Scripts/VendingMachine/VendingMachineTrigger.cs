@@ -16,9 +16,22 @@ namespace JustAGame.VendingMachine
         {
             try
             {
-                vendingMachine = vendingMachine.IsNotNull() 
-                    ? vendingMachine 
-                    : (this.GetComponentOrNull<VendingMachine>() ?? GetComponentInParent<VendingMachine>());
+                if (vendingMachine.IsNull())
+                {
+                    vendingMachine = this.GetComponentOrNull<VendingMachine>();
+                    if (vendingMachine.IsNull())
+                    {
+                        vendingMachine = this.GetComponentInParentOrNull<VendingMachine>();
+                    }
+                    else
+                    {
+                        // Found on current GameObject
+                    }
+                }
+                else
+                {
+                    // Pre-assigned in inspector
+                }
 
                 var col = this.GetComponentOrNull<Collider>();
                 if (col.IsNotNull())
@@ -61,7 +74,16 @@ namespace JustAGame.VendingMachine
                 else
                 {
                     // Only trigger UI for the local player
-                    var inventory = other.GetComponent<PlayerInventory>() ?? other.GetComponentInParent<PlayerInventory>();
+                    var inventory = other.GetComponentOrNull<PlayerInventory>();
+                    if (inventory.IsNull())
+                    {
+                        inventory = other.GetComponentInParentOrNull<PlayerInventory>();
+                    }
+                    else
+                    {
+                        // Inventory component resolved directly on collider
+                    }
+
                     if (inventory.IsNotNull() && inventory.isOwned)
                     {
                         OnVendingMachineEntered?.Invoke(vendingMachine);
@@ -88,7 +110,16 @@ namespace JustAGame.VendingMachine
                 }
                 else
                 {
-                    var inventory = other.GetComponent<PlayerInventory>() ?? other.GetComponentInParent<PlayerInventory>();
+                    var inventory = other.GetComponentOrNull<PlayerInventory>();
+                    if (inventory.IsNull())
+                    {
+                        inventory = other.GetComponentInParentOrNull<PlayerInventory>();
+                    }
+                    else
+                    {
+                        // Inventory component resolved directly on collider
+                    }
+
                     if (inventory.IsNotNull() && inventory.isOwned)
                     {
                         OnVendingMachineExited?.Invoke(vendingMachine);
