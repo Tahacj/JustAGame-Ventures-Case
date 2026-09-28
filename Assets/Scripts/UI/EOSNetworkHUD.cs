@@ -20,14 +20,20 @@ namespace JustAGame.UI
         [SerializeField] private int offsetY = 15;
         [SerializeField] private int panelWidth = 320;
 
+        public static EOSNetworkHUD Instance { get; private set; }
+        public bool ShowHUD { get => showHUD; set => showHUD = value; }
+
         private string _targetHostId = string.Empty;
         private string _statusMessage = string.Empty;
+        private string _authProfileName = "Player1";
+        private string _devAuthPortStr = "7878";
         private EOSNetworkManagerBridge _bridge;
 
         private void Awake()
         {
             try
             {
+                Instance = this;
                 ResolveBridge();
             }
             catch (Exception ex)
@@ -97,7 +103,16 @@ namespace JustAGame.UI
         {
             try
             {
-                if (!showHUD)
+                if (EpicTransport.EOSSDKComponent.Initialized && !showHUD)
+                {
+                    showHUD = true;
+                }
+                else
+                {
+                    // Visibility maintained
+                }
+
+                if (!showHUD || !EpicTransport.EOSSDKComponent.Initialized)
                 {
                     return;
                 }
@@ -160,7 +175,47 @@ namespace JustAGame.UI
                 }
                 else
                 {
-                    GUILayout.Label("<color=#FF8080>● EOS Status: Initializing...</color>");
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("Profile:", GUILayout.Width(50));
+                    _authProfileName = GUILayout.TextField(_authProfileName);
+                    GUILayout.Label("Port:", GUILayout.Width(35));
+                    _devAuthPortStr = GUILayout.TextField(_devAuthPortStr, GUILayout.Width(50));
+                    GUILayout.EndHorizontal();
+
+                    GUILayout.BeginHorizontal();
+                    if (GUILayout.Button("Login (DevAuth)"))
+                    {
+                        string cred = string.IsNullOrEmpty(_authProfileName) ? "Player1" : _authProfileName.Trim();
+                        uint port = uint.TryParse(_devAuthPortStr, out uint p) ? p : 7878;
+                        _statusMessage = $"Logging into DevAuth as '{cred}' on port {port}...";
+                        EpicTransport.EOSSDKComponent.LoginWithDevAuth(cred, port);
+                    }
+                    else
+                    {
+                        // Button idle
+                    }
+
+                    if (GUILayout.Button("Login (Epic Account)"))
+                    {
+                        _statusMessage = "Opening Epic Account Portal in browser...";
+                        EpicTransport.EOSSDKComponent.LoginWithEpicAccount();
+                    }
+                    else
+                    {
+                        // Button idle
+                    }
+                    GUILayout.EndHorizontal();
+
+                    if (GUILayout.Button("Quick Guest Login (Device ID)"))
+                    {
+                        string cred = string.IsNullOrEmpty(_authProfileName) ? "User" : _authProfileName.Trim();
+                        _statusMessage = $"Logging in via Device ID...";
+                        EpicTransport.EOSSDKComponent.LoginWithDeviceId(cred);
+                    }
+                    else
+                    {
+                        // Button idle
+                    }
                 }
             }
             catch (Exception ex)

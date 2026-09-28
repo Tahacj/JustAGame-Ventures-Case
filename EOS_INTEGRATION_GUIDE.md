@@ -6,40 +6,63 @@
 
 This project integrates **Epic Online Services (EOS)** Peer-to-Peer (P2P) transport with **Mirror 96.0.1** in Unity (Windows 64-bit target). It replaces traditional direct IP/Port networking with Epic's NAT punchthrough and relay infrastructure, allowing players to connect globally using their **Epic Product User IDs (PUID)** without requiring port forwarding or dedicated game servers.
 
-All network-dependent systems—including **Client-Authoritative Player Movement** and the **Server-Authoritative Vending Machine Economy** (with odd/even inventory routing)—have been linked to the EOS transport. Furthermore, the transport layer has been hardened against **4 critical security vulnerabilities** (hijacking, spoofing, packet DoS, and socket bleed) and refactored under the zero-tolerance **`DESIGN_PATTERNS.md`** standard (exhaustive `if-else` branching, universal `try-catch`, and inline safe queries).
+All network-dependent and progression systems have been deeply coupled into the EOS backend:
+1. **Multi-Provider Authentication Layer**: Instant Guest login via hardware-tied Device ID, local developer multi-instance testing via DevAuthTool, and full web-portal OAuth login via Epic Account Services (EAS).
+2. **Authoritative Distance Ingestion & Cloud Stats**: Continuous real-world walking distance measurement batched to the EOS Stats Interface (`DISTANCE_WALKED`) every 5m, reconciled against local disk storage (`PlayerPrefs`).
+3. **Milestone Achievement System & 3-State Visual Indicator**: Milestone-driven unlocking of the `WALK_100M` cloud achievement, reflected in real time via a dynamic 3-color HUD (🔴 Red, 🟡 Yellow, 🟢 Green).
+4. **Custom In-Game Sliding Achievement Toast UI**: A smooth, self-contained overlay banner (`AchievementNotificationUI`) that bypasses the Unity Editor's native overlay restriction and delivers an authentic console-grade achievement popup.
+5. **Security-Hardened Transport**: Hardened against 4 critical network vulnerabilities (hijacking, identity spoofing, packet DoS, and socket bleed) under the zero-tolerance **`DESIGN_PATTERNS.md`** standard.
+6. **Server-Authoritative Vending Machine Economy**: Distance-guarded purchase validation with odd/even item inventory routing.
+7. **Developer Reset & Inspection Tooling**: Runtime hotkeys (`F7`, `F9`) and top menu tools (`EOS Tools`) to wipe caches, reset device tokens, and trigger animation tests.
 
 ---
 
 ## 2. What Was Added & Modified
 
-### 2.1 File Inventory
+### 2.1 Complete File Inventory
 
 ```
 JustAGame Ventures Case/
-├── DESIGN_PATTERNS.md                                 <-- Architectural & code standard rules
+├── DESIGN_PATTERNS.md                                 <-- Architectural & zero-slop code standards
 ├── EOS_INTEGRATION_GUIDE.md                           <-- This comprehensive documentation
+├── README.md                                          <-- Case study answers, flowcharts & quick-start
 ├── Assets/
+│   ├── AchievementIcons/                              <-- Icons for in-game achievement notifications
+│   │   ├── achievement_trophy.png                     <-- High-resolution gold trophy icon (56x56)
+│   │   └── default_trophy.png                         <-- Fallback trophy texture
 │   ├── Mirror/
 │   │   └── Transports/
-│   │       └── EpicOnlineTransport/                   <-- FakeByte EOS Transport Package
+│   │       └── EpicOnlineTransport/                   <-- EOS Transport Core
 │   │           ├── Server.cs                          <-- [MODIFIED] CS7036 fix, Whitelist filter, Safe rejection
 │   │           ├── Common.cs                          <-- [MODIFIED] Fast-path single packet, GC allocation pool
 │   │           ├── EosTransport.cs                    <-- [MODIFIED] Dynamic socket name isolation, ConnectionFilter
 │   │           ├── Client.cs                          <-- Client socket communication
-│   │           └── EOSSDKComponent.cs                 <-- EOS SDK lifecycle & login management
+│   │           ├── EOSSDKComponent.cs                 <-- [EXPANDED] Multi-auth (Guest, DevAuth, EAS), device wipe, logger 400
+│   │           └── DevAuthTool/                       <-- Epic Developer Authentication Tool package
+│   │               └── Tool~/EOS_DevAuthTool.exe      <-- Local credential server for dual-instance testing
 │   └── Scripts/
 │       ├── Core/
 │       │   └── Network/
-│       │       ├── EOSNetworkManagerBridge.cs         <-- [NEW] EOS lifecycle coordinator, P2P host/client starter
-│       │       └── EOSNetworkAuthenticator.cs         <-- [NEW] Anti-spoofing Mirror authenticator
+│       │       ├── EOSNetworkManagerBridge.cs         <-- EOS lifecycle coordinator, P2P host/client starter
+│       │       ├── EOSNetworkAuthenticator.cs         <-- Anti-spoofing physical address authenticator
+│       │       └── EOSPlayerStatsTracker.cs           <-- [NEW] Movement ingestion, EOS Stats & Achievements, 5m batching, PlayerPrefs cache
 │       ├── UI/
-│       │   └── EOSNetworkHUD.cs                       <-- [NEW] In-game GUI for PUID display, copy/paste, host/connect
+│       │   ├── EOSLoginUI.cs                          <-- [NEW] TMP login modal with Guest, DevAuth & Epic Account buttons + 14s guard
+│       │   ├── EOSNetworkHUD.cs                       <-- [EXPANDED] In-game GUI for PUID display, copy/paste, host/connect, auth switcher
+│       │   ├── PlayerDistanceUI.cs                    <-- [NEW] Dynamic 3-state TMP walking distance indicator (Red / Yellow / Green)
+│       │   ├── AchievementNotificationUI.cs           <-- [NEW] Sliding in-game achievement toast with dedicated sorting 999 canvas
+│       │   ├── PlayerInventoryUI.cs                   <-- Local money & inventory display
+│       │   ├── VendingMachineUI.cs                    <-- Vending machine catalog UI with Odd/Even routing tags
+│       │   └── VendingMachineItemButton.cs            <-- Dynamic catalog item button controller
 │       ├── Movement/
-│       │   └── ClientAuthoritativeMovement.cs         <-- [HARDENED] NetworkClient.ready sync check, strict if-else
+│       │   └── ClientAuthoritativeMovement.cs         <-- Client-authoritative movement hooked to EOSPlayerStatsTracker
 │       ├── VendingMachine/
-│       │   └── VendingMachineTrigger.cs               <-- [HARDENED] GetComponentInParentOrNull, exhaustive branching
+│       │   ├── VendingMachine.cs                      <-- Server-authoritative inventory & balance validation
+│       │   └── VendingMachineTrigger.cs               <-- Proximity trigger with GetComponentInParentOrNull
+│       ├── Editor/
+│       │   └── EOSDebugTools.cs                       <-- [NEW] Top menu bar: reset distance, wipe device ID, print PUID, test popup
 │       └── Pooling/
-│           └── ObjectPool.cs                          <-- [EXTENDED] GetComponentInParentOrNull extension methods
+│           └── ObjectPool.cs                          <-- Safe extension methods (GetComponentInParentOrNull)
 ```
 
 ---
@@ -123,225 +146,312 @@ JustAGame Ventures Case/
 
 ---
 
-### 3.6 Safeguards & Reliability
-* **Safeguard #1 (Host Stalling on Close):** In [EOSNetworkManagerBridge.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Scripts/Core/Network/EOSNetworkManagerBridge.cs), `StopHostOrClient()` cleans up registered whitelist entries, unregisters callbacks, and gracefully resets the network address.
-* **Safeguard #2 (Double-Accept Protection):** In [Server.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Mirror/Transports/EpicOnlineTransport/Server.cs), peer connection states are tracked in `connectedClients`. If an incoming connection request is received from an already-accepted peer, duplicate `AcceptConnection` calls are safely skipped.
-* **Safeguard #3 (Auth Verification):** Implemented in `EOSNetworkAuthenticator`, checking both Epic Account Auth tokens (via `AuthInterface.VerifyUserAuth`) and P2P physical address validation.
+## 4. Authentication Architecture & Multi-Identity Management
+
+The authentication layer was redesigned to support frictionless single-PC testing, multiple account types, and fail-safe UI transitions.
+
+```mermaid
+graph TD
+    UI[EOSLoginUI] -->|Option 1: Quick Play| Guest[Connect.CreateDeviceId / DeviceidAccessToken]
+    UI -->|Option 2: Single-PC Multi-Client| DevAuth[DevAuthTool on 127.0.0.1:7878]
+    UI -->|Option 3: Live Account| EAS[AuthInterface: AccountPortal / OAuth Web]
+    
+    Guest --> ConnectInterface[EOS Connect Interface]
+    DevAuth --> ConnectInterface
+    EAS --> ConnectInterface
+    
+    ConnectInterface --> PUID[Epic Product User ID - PUID]
+    PUID --> Hub[EOSNetworkHUD & EOSPlayerStatsTracker]
+```
+
+### 4.1 Authentication Providers Implemented
+1. **Device ID (Guest Authentication)**:
+   * Uses `Connect.CreateDeviceId` and `Connect.Login(CredentialsType.DeviceidAccessToken)`.
+   * **Behavior**: Zero-click authentication. Links the game session to the Windows machine profile without requiring any Epic Games account or external login prompt.
+   * **Persistence**: The token is stored in the Windows registry/keychain. To reset it to a brand new guest user, use `EOS Tools > Reset Guest Device ID`.
+2. **Developer Authentication Tool (DevAuthTool)**:
+   * Configured via [EOSSDKComponent.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Mirror/Transports/EpicOnlineTransport/EOSSDKComponent.cs) using explicit IPv4 loopback (`127.0.0.1:7878`).
+   * Solves the single-PC multi-instance problem: DevAuthTool can host multiple distinct named credentials (e.g. `Player1`, `Player2`).
+   * When Unity Editor logs in as `Player1` and a standalone build logs in as `Player2`, EOS assigns them **two unique Product User IDs**, allowing full P2P host-client connection on one computer.
+3. **Epic Account Services (EAS / Account Portal)**:
+   * Uses `AuthInterface.Login` with `LoginCredentialType.AccountPortal`.
+   * Opens the system browser and authenticates against the player's real Epic Games Account.
+   * Exchange token is passed to `Connect.Login` using `ExternalCredentialType.Epic`.
+
+### 4.2 Single-PC Multi-Instance Scoping Rules
+* **Device ID Scope**: Device ID is hardware/OS-scoped. If you launch two game instances under the same Windows user account, both instances will share the *same* Device ID and PUID. Because an EOS peer cannot establish a P2P socket with itself, dual-instance testing on one PC must use **DevAuthTool** or two separate Windows user accounts ("Run as different user").
+
+### 4.3 14-Second Timeout Watchdog
+In [EOSLoginUI.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Scripts/UI/EOSLoginUI.cs), if an external authentication request (such as a browser popup or unreachable DevAuthTool) takes longer than 14 seconds:
+* The watchdog coroutine automatically aborts the pending state.
+* Displays a clear error message in `statusTMP`.
+* Re-enables all buttons, preventing the UI from becoming permanently locked in a frozen state.
 
 ---
 
-### 3.7 Gameplay Synchronization: Movement & Vending Machine
-* **Movement Synchronization:**
-  * [ClientAuthoritativeMovement.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Scripts/Movement/ClientAuthoritativeMovement.cs) now validates `NetworkClient.ready` before reading input or transmitting `CmdUpdateTransform`. This prevents clients from sending RPCs during initial P2P handshake before Mirror finishes readying the connection.
-* **Vending Machine Economy:**
-  * [VendingMachine.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Scripts/VendingMachine/VendingMachine.cs) validates proximity, balance, and item catalogs on the server.
-  * When a purchase succeeds:
-    * **Odd Item IDs** (e.g. #1, #3): Routed to the buyer's `PlayerInventory`.
-    * **Even Item IDs** (e.g. #2, #4): Routed to the Host's `PlayerInventory`.
-  * Trigger detection in [VendingMachineTrigger.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Scripts/VendingMachine/VendingMachineTrigger.cs) uses the new safe extension method `GetComponentInParentOrNull<PlayerInventory>()`.
+## 5. Walking Distance Tracking, EOS Cloud Stats & 3-State Visual System
+
+To satisfy progression requirements, walking distance is continuously measured, batched to the EOS cloud, and surfaced to the player through an authoritative 3-color status indicator.
+
+```mermaid
+flowchart TD
+    Move[ClientAuthoritativeMovement] -->|Frame delta > 0.001m| Tracker[EOSPlayerStatsTracker]
+    Tracker -->|Accumulate Distance| LocalCache[PlayerPrefs: EOS_Distance_PUID]
+    Tracker -->|Batch Every 5.0m| StatsAPI[EOS Stats Interface: IngestStat DISTANCE_WALKED]
+    Tracker -->|Query Cloud Stats| QueryStats[EOS Stats Interface: QueryStats]
+    Tracker -->|Query Achievements| QueryAch[EOS Achievements Interface: QueryPlayerAchievements]
+    
+    Tracker -->|Distance & Sync Events| UI[PlayerDistanceUI]
+    
+    subgraph 3-State Visual Pipeline
+        S1[State 1: Distance < 100m] -->|Color: RED #FF5555| UIRed[Distance: XX.Xm / 100m - In Progress]
+        S2[State 2: Distance >= 100m, Unsynced] -->|Color: YELLOW #FFDD44| UIYellow[Distance: 100.0m - Syncing with EOS...]
+        S3[State 3: Backend Verified Unlocked] -->|Color: GREEN #55FF55| UIGreen[Distance: 100.0m - 100m Unlocked & Synced]
+    end
+```
+
+### 5.1 Technical Pipeline
+1. **Movement Ingestion**:
+   * [ClientAuthoritativeMovement.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Scripts/Movement/ClientAuthoritativeMovement.cs) checks `isLocalPlayer`.
+   * For every frame where horizontal translation occurs, the positional delta is forwarded to `EOSPlayerStatsTracker.RecordDistance(delta)`.
+2. **5-Meter Metric Ingestion Batching**:
+   * Sending an EOS cloud RPC every frame would quickly exhaust Epic's rate limits and cause packet contention.
+   * `EOSPlayerStatsTracker` aggregates movement in an internal `_unreportedDistance` buffer.
+   * Once `_unreportedDistance >= 5.0f`, it calls `StatsInterface.IngestStat` with:
+     ```csharp
+     StatName = "DISTANCE_WALKED",
+     IngestAmount = (int)accumulatedMeters
+     ```
+   * Any remaining distance is flushed upon `OnApplicationQuit()`.
+3. **Dual Persistence & Cloud Reconciliation**:
+   * **Local Cache**: Saved under `PlayerPrefs.SetFloat($"EOS_Distance_{puid}", totalDistanceWalked)`. Restored instantly at startup so the UI never starts at 0m if the player previously walked.
+   * **Cloud Query**: Upon EOS session establishment, `QueryStats` and `QueryPlayerAchievements` run asynchronously. If the cloud returns a distance or unlock state higher than the local cache, the local state is promoted to match the cloud.
+4. **3-State Distance Visualization Specifications**:
+   Implemented in [PlayerDistanceUI.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Scripts/UI/PlayerDistanceUI.cs) using TextMeshPro:
+
+   | State | Distance Range | Backend Status | Color | Display Text Format |
+   | :--- | :--- | :--- | :--- | :--- |
+   | **1. Not Achieved** | `< 100.0m` | Not Unlocked | 🔴 **Red** (`#FF5555`) | `Distance: {0:F1}m / 100m ({2:F0}%)` |
+   | **2. Milestone Met (Local)** | `≥ 100.0m` | Unsynced / Pending | 🟡 **Yellow** (`#FFDD44`) | `Distance: {0:F1}m [100m Met - Syncing with EOS...]` |
+   | **3. Synced & Verified** | `≥ 100.0m` | Cloud Verified | 🟢 **Green** (`#55FF55`) | `Distance: {0:F1}m [100m Unlocked & Synced]` |
 
 ---
 
-## 4. End-to-End System Sequence Diagram
+## 6. Sliding In-Game Achievement Toast Notification System
+
+### 6.1 The Unity Editor Overlay Limitation
+When running inside the Unity Editor, Epic's native EOS Social and Achievement Overlay is explicitly disabled by the SDK runtime:
+```
+[EOSSDKComponent] LogEOS: [LogEOSOverlay] Failed to subclass window. Disabling overlay rendering.
+```
+**Why:** The native Epic overlay relies on low-level Win32 window subclassing and DirectX/Vulkan backbuffer hook injection. Because the Unity Editor hosts the game view inside a child WPF/Win32 dock pane rather than an exclusive game window, the EOS SDK safely suppresses the native overlay to avoid crashing the Editor. It only renders in standalone `.exe` builds.
+
+### 6.2 The Custom Sliding Toast Solution
+To ensure immediate, premium feedback in both the Unity Editor and Standalone builds, we developed [AchievementNotificationUI.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Scripts/UI/AchievementNotificationUI.cs).
+
+```
+ ┌─────────────────────────────────────────────────────────────┐
+ │ █  [GOLD ACCENT TRIM LINE]                                  │
+ │ █  ┌────────┐  ACHIEVEMENT UNLOCKED                         │
+ │ █  │ 🏆 56x56│  Century Walker                               │
+ │ █  └────────┘  You walked 100 meters! [EOS Synced]          │
+ └─────────────────────────────────────────────────────────────┘
+```
+
+1. **Independent Canvas Architecture (`sortingOrder = 999`)**:
+   * Previously, dynamic UI elements attached to whatever canvas `FindFirstObjectByType<Canvas>()` found first (such as the login screen or vending machine panel). When those panels deactivated, the toast vanished.
+   * `AchievementNotificationUI` automatically spawns its own dedicated `AchievementOverlayCanvas` set to `RenderMode.ScreenSpaceOverlay`, configured with `DontDestroyOnLoad` and `sortingOrder = 999`. It is physically impossible for game panels to obscure it.
+2. **Animation Choreography**:
+   * **Off-Screen Start**: Anchored top-center at `Y = +120px` with `alpha = 0`.
+   * **Slide-In & Fade**: Smooth 0.4s cubic ease-out slide to `Y = -40px`, fading to `alpha = 1`.
+   * **Readable Hold**: Holds on screen for **4.0 seconds**.
+   * **Slide-Out & Fade**: 0.4s cubic ease-in slide back up to `Y = +120px`, fading to `alpha = 0`.
+3. **Visual Aesthetics**:
+   * Dark glassmorphic background (`#0F141E`, 95% opacity).
+   * 2px Gold accent border line (`#FFD700`) at the top edge.
+   * Crisp 56x56 gold trophy icon ([achievement_trophy.png](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/AchievementIcons/achievement_trophy.png)).
+4. **Testing Hotkey**:
+   * Press **`F7`** in play mode at any time to trigger an instant test animation.
+
+---
+
+## 7. End-to-End System Sequence Diagram
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Host as Host Player (PC 1)
-    actor Client as Client Player (PC 2)
+    actor Player as Local Player
+    participant UI as EOSLoginUI / NetworkHUD
+    participant SDK as EOSSDKComponent
     participant EOS as Epic Online Services Backend
-    participant Transport as EosTransport (P2P Layer)
-    participant Server as Mirror Server (GameNetworkManager)
-    participant Auth as EOSNetworkAuthenticator
-    participant Logic as Movement & Vending Machine
+    participant Tracker as EOSPlayerStatsTracker
+    participant DistUI as PlayerDistanceUI
+    participant Toast as AchievementNotificationUI
+    participant VM as Vending Machine Economy
 
-    Note over Host,EOS: 1. Host Session Setup
-    Host->>EOS: Login & Initialize EOS SDK
-    Host->>Server: StartEosHost()
-    Server->>Transport: ServerStart() -> Generates MatchSessionSocketName
-    Server-->>Host: Displays Host Epic Product User ID (PUID)
+    Note over Player,EOS: Phase 1: Authentication & Identity
+    Player->>UI: Select Login (Guest / DevAuth / Epic)
+    UI->>SDK: LoginWithDevAuth / LoginWithDeviceId
+    SDK->>EOS: Connect.Login()
+    EOS-->>SDK: Success (Returns ProductUserId)
+    SDK-->>UI: OnLoginSuccessEvent
+    UI->>UI: Hide Login Panel, Reveal Gameplay HUD
 
-    Note over Client,EOS: 2. P2P NAT Punchthrough & Whitelist
-    Client->>Transport: ClientConnect(Host PUID)
-    Transport->>EOS: Request P2P NAT Traversal / Relay
-    EOS-->>Transport: P2P Socket Established
-    Transport->>Transport: Evaluate ConnectionFilter (Loophole #1 Fix)
-
-    Note over Client,Auth: 3. Anti-Spoof Authentication
-    Client->>Auth: Send EOSAuthRequestMessage(reportedPUID, authToken)
-    Auth->>Transport: ServerGetClientAddress(connectionId)
-    alt Socket Address != reportedPUID
-        Auth-->>Client: Reject & Disconnect (Loophole #2 Fix)
-    else Match Confirmed
-        Auth->>Auth: Register Authenticated Player
-        Auth-->>Client: Send EOSAuthResponseMessage(Success)
+    Note over Player,DistUI: Phase 2: Authoritative Distance Tracking (Red -> Yellow)
+    DistUI->>DistUI: Initialize text in RED (< 100m)
+    loop Continuous Walking (WASD)
+        Player->>Tracker: Movement Delta
+        Tracker->>Tracker: Accumulate totalDistanceWalked
+        Tracker->>Tracker: Save to PlayerPrefs
+        Tracker->>DistUI: OnDistanceUpdated
+        opt Distance >= 5.0m threshold
+            Tracker->>EOS: Stats.IngestStat("DISTANCE_WALKED", 5)
+        end
     end
 
-    Note over Client,Logic: 4. Gameplay Execution
-    Client->>Transport: Send CmdUpdateTransform() [Movement Sync]
-    Transport-->>Server: Replicate position to all observers
-    Client->>Server: CmdRequestPurchase(itemId) [Vending Machine]
-    Server->>Logic: Validate Proximity, Catalog & Player Funds
-    alt Odd Item ID
-        Server->>Client: Add item to Client Inventory
-    else Even Item ID
-        Server->>Host: Route item to Host Inventory
+    Note over Player,Toast: Phase 3: Milestone & Cloud Sync (Yellow -> Green)
+    Player->>Tracker: Passes 100.0m milestone
+    Tracker->>DistUI: Local milestone met -> Switch to YELLOW
+    Tracker->>EOS: Achievements.UnlockAchievements(["WALK_100M"])
+    EOS-->>Tracker: OnAchievementsUnlockedCallback (Success)
+    Tracker->>DistUI: OnAchievementSyncStatusChanged(true) -> Switch to GREEN
+    Tracker->>Toast: OnAchievementUnlockedEvent("WALK_100M")
+    Toast->>Toast: Slide-down gold toast banner (4.0s hold, slide-up)
+
+    Note over Player,VM: Phase 4: Vending Machine Server Routing
+    Player->>VM: Enter Trigger -> Open Vending UI
+    Player->>VM: CmdRequestPurchase(itemId)
+    alt Odd Item ID (1, 3)
+        VM->>Player: Deliver item to Buyer Inventory
+    else Even Item ID (2, 4)
+        VM->>Player: Deliver item to Host Inventory
     end
-    Server-->>Client: TargetRpcPurchaseSuccess()
 ```
 
 ---
 
-## 5. Step-by-Step Testing Guide
+## 8. Developer Reset, Testing & Debug Tooling
+
+To enable rapid iteration and repeated verification without waiting for backend purges, the project includes hotkeys and custom Unity Editor menu commands:
+
+### 8.1 Runtime Hotkeys
+* **`F7`**: Triggers the sliding in-game achievement toast notification preview.
+* **`F9`**: Resets the local walking distance cache back to `0.0m` (reverts `PlayerDistanceUI` back to 🔴 **Red**).
+
+### 8.2 Unity Editor Top Menu (`EOS Tools`)
+Located in Unity's top menu bar under [EOSDebugTools.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Scripts/Editor/EOSDebugTools.cs):
+
+| Menu Command | Action & Effect |
+| :--- | :--- |
+| **`EOS Tools > Reset Local Walking Distance Cache`** | Deletes `EOS_Distance_*`, `EOS_AchUnlocked_*`, and `EOS_AchSynced_*` from `PlayerPrefs`. Resets live tracker in play mode. |
+| **`EOS Tools > Reset Guest Device ID (Create Fresh 0m Account)`** | Calls `Connect.DeleteDeviceId` to wipe hardware credentials from the Windows keychain. The next Guest login creates a completely new PUID with 0m walked on Epic's servers. |
+| **`EOS Tools > Print Current Player ProductUserId (PUID)`** | Outputs the active 32-character PUID to the Unity Console and provides instructions for deleting cloud stats in Developer Portal. |
+| **`EOS Tools > Test Sliding Achievement Popup (F7)`** | Spawns and animates the golden achievement toast in play mode. |
+
+### 8.3 Epic Games Developer Portal Cloud Wipe
+To reset stats on Epic's backend servers:
+1. Open [dev.epicgames.com/portal](https://dev.epicgames.com/portal).
+2. Select your Organization & Product.
+3. Navigate to **Game Services > Player Search**.
+4. Paste the player's PUID (obtained via `EOS Tools > Print Current Player ProductUserId`).
+5. Click **Player Achievements** or **Player Data** and click **Delete Player Data** / **Reset Achievements**.
+
+---
+
+## 9. Step-by-Step Testing & Verification Workflows
 
 ### Option 1: Testing on a Single PC (Dual Instance with DevAuthTool)
 
 Epic Online Services requires two distinct authenticated Epic accounts to establish a P2P connection (an account cannot connect to itself).
 
-#### Step 1: Set Up DevAuthTool
-1. Navigate to:
-   ```
-   Assets/Mirror/Transports/EpicOnlineTransport/DevAuthTool/
-   ```
-2. The exact zip file is:
-   ```
-   EOS_DevAuthTool-win32-x64-1.0.1.zip
-   ```
-3. It has already been extracted into:
-   ```
-   Assets/Mirror/Transports/EpicOnlineTransport/DevAuthTool/Tool~/
-   ```
-   *(The `~` character prevents Unity from importing external tool binaries into the AssetDatabase).*
-4. Run:
+#### Step 1: Run DevAuthTool
+1. Run the local authentication server:
    ```
    Assets/Mirror/Transports/EpicOnlineTransport/DevAuthTool/Tool~/EOS_DevAuthTool.exe
    ```
-5. Enter port `7878` and click **Start**.
-6. Click **Add User**:
-   * Log into Epic Account #1. Save credential name as: `HostUser`.
-7. Click **Add User** again:
-   * Log into Epic Account #2. Save credential name as: `ClientUser`.
+2. Enter port `7878` and click **Start**.
+3. Click **Add User**:
+   * Log into Epic Account #1. Save credential name as: `Player1`.
+4. Click **Add User** again:
+   * Log into Epic Account #2. Save credential name as: `Player2`.
 
-#### Step 2: Configure Unity Editor for Host
-1. In Unity, open [SampleScene.unity](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Scenes/SampleScene.unity).
-2. Select the GameObject with `EOSSDKComponent`.
-3. In the Inspector:
-   * **Auth Interface Login**: Checked (`true`)
-   * **Auth Interface Credential Type**: `Developer`
-   * **Dev Auth Tool Port**: `7878`
-   * **Dev Auth Tool Credential Name**: `HostUser`
+#### Step 2: Run Host in Unity Editor
+1. In Unity, press **Play**.
+2. On the `EOSLoginUI` panel:
+   * Profile Name: `Player1`
+   * Click **Login (DevAuth)**.
+3. Wait for `● EOS Status: Ready` in `EOSNetworkHUD`.
+4. Click **Host Game (EOS P2P)**.
+5. Click **Copy My EOS ID to Clipboard**.
 
-#### Step 3: Build Standalone Executable for Client
-1. In Unity: **File > Build Profiles** (or **Build Settings**).
-2. Ensure `SampleScene` is in the build list.
-3. Click **Build** and output to `Build/EOSGame.exe`.
-4. *(Optional tip for automatic dual credentials)*: You can configure the standalone build to log in as `ClientUser` using command-line arguments or temporarily change the Credential Name to `ClientUser` before building.
-
-#### Step 4: Run & Connect
-1. **In the Unity Editor:**
-   * Click **Play**.
-   * Observe the `EOSNetworkHUD` in the top-left corner.
-   * Wait until the status changes to: `● EOS Status: Ready`.
-   * Click **Host Game (EOS P2P)**.
-   * Click **Copy My EOS ID to Clipboard**.
-2. **In the Standalone Executable (`EOSGame.exe`):**
-   * Launch the game.
-   * Wait until status shows `● EOS Status: Ready`.
-   * Click **Paste ID** (or press Ctrl+V in the input box).
-   * Click **Connect Client**.
+#### Step 3: Run Client in Standalone Build
+1. In Unity: **File > Build Settings** -> Build executable to `Build/EOSGame.exe`.
+2. Launch `EOSGame.exe`.
+3. On the `EOSLoginUI` panel:
+   * Profile Name: `Player2`
+   * Click **Login (DevAuth)**.
+4. On `EOSNetworkHUD`, click **Paste ID** (or Ctrl+V).
+5. Click **Connect Client**.
 
 ---
 
-### Option 2: Testing Across Two Separate Computers (LAN or WAN)
-
-Because EOS P2P utilizes Epic's global NAT traversal and relay infrastructure, two computers can connect anywhere in the world without port forwarding:
-
-1. Copy or build the game on **Computer A (Host)** and **Computer B (Client)**.
-2. Both machines must be logged in with separate Epic Accounts (via Developer Tool, Account Portal, or Device ID).
-3. **Computer A**: Clicks **Host Game (EOS P2P)**, copies their Product User ID, and sends it to Computer B.
-4. **Computer B**: Pastes Computer A's Product User ID into the HUD and clicks **Connect Client**.
-
----
-
-### 5.3 Gameplay Verification Checklist
-
-| Test Item | Action | Expected Result |
-| :--- | :--- | :--- |
-| **P2P Handshake** | Client connects to Host PUID | Host console logs `authenticated connection with verified PUID`. Client spawns into scene. |
-| **Movement Sync** | Move Client with WASD | Host sees Client move in real time without rubber-banding. |
-| **Proximity Guard** | Walk near Vending Machine | `VendingMachineUI` automatically opens. |
-| **Odd Item Purchase** | Purchase Item #1 or #3 | Money is deducted from Buyer; Item appears in **Buyer's Inventory**. |
-| **Even Item Purchase** | Purchase Item #2 or #4 | Money is deducted from Buyer; Item appears in **Host's Inventory**. |
-| **Insufficient Funds** | Attempt purchase with $0 | Transaction is rejected; UI banner displays error message; no money deducted. |
+### Option 2: Quick Guest Testing (Device ID)
+1. In Unity Editor, press **Play**.
+2. Click **Quick Guest Login (Device ID)**.
+3. You will immediately be authenticated with a persistent hardware PUID without entering any credentials.
+4. Walk with `WASD`:
+   * Observe `PlayerDistanceUI` counting meters in 🔴 **Red**.
+   * At `100.0m`, observe the text switch to 🟡 **Yellow**, then 🟢 **Green**, accompanied by the gold sliding achievement banner.
 
 ---
 
-## 6. Where to See the Live Data
+## 10. Developer Portal Configuration Matrix & Troubleshooting Guide
 
-### 6.1 In the Unity Editor Console
+### 10.1 Client Policy Requirement: `GameClient` vs `Peer2Peer`
+* **Symptom**: `Auth.Login` or `Connect.Login` fails with `InvalidRequest` or `Forbidden`.
+* **Root Cause**: If the Client Policy assigned to your Client ID in the Developer Portal is configured with the `Peer2Peer` template, it only permits raw P2P NAT punchthrough and forbids user account authentication.
+* **Resolution**: In Developer Portal > **Product Settings > Clients & Permissions**:
+  1. Set the Client Policy to **GameClient** (or ensure `AuthInterface`, `ConnectInterface`, and `Achievements` are explicitly checked).
+  2. Click **Save & Deploy**.
 
-Watch the Unity Console for the following formatted diagnostic logs:
+### 10.2 Epic Account Services (EAS) Scope Configuration
+* **Symptom**: Web browser opens for Epic Account login, but displays an error saying *“The application requires scopes that have not been configured”*.
+* **Root Cause**: The EAS Application linked to your client has not declared permissions.
+* **Resolution**: In Developer Portal > **Epic Account Services**:
+  1. Open your linked application.
+  2. Under **Permissions**, toggle **Basic Profile** (Required: `true`).
+  3. Under **Linked Clients**, ensure your Client ID is selected.
+  4. Save changes.
 
-* **EOS Initialization:**
-  ```text
-  [EOSSDKComponent] Initialized
-  [EOSSDKComponent] Logged in as: 000284ab9f4a45a68735391c49b06821
-  ```
-* **Host Start:**
-  ```text
-  [EOSNetworkManagerBridge] EOS Host started successfully! Local Product ID: 000284ab9f4a45a68735391c49b06821
-  [EosTransport] Server started on socket: Match_a8F2kL90pQ1mNx45Vz8Y
-  ```
-* **Security & Authentication Verification:**
-  ```text
-  [EOSNetworkAuthenticator] Authenticating connection 1 from socket address: 00029b3c48e14674a2f8d38101a052e4
-  [EOSNetworkAuthenticator] Successfully authenticated connection 1 with verified PUID: 00029b3c48e14674a2f8d38101a052e4
-  ```
-* **Vending Machine Server Processing:**
-  ```text
-  [VendingMachine] Purchase approved for Item #1 (Odd ID). Routed to buyer inventory.
-  [VendingMachine] Purchase approved for Item #2 (Even ID). Routed to host inventory.
-  ```
+### 10.3 DevAuthTool Stale Tokens (`UnexpectedError`)
+* **Symptom**: DevAuthTool shows user as used "16 seconds ago", but Unity logs `LoginCallback: UnexpectedError`.
+* **Root Cause**: If permissions or client credentials were modified in the portal while DevAuthTool was running, DevAuthTool retains stale OAuth refresh tokens in its local cache.
+* **Resolution**:
+  1. In `EOS_DevAuthTool.exe`, click the trash icon next to the user.
+  2. Click **Add User** and sign in again to generate a fresh token.
 
----
+### 10.4 IPv4 Loopback Addressing
+* **Issue**: On Windows 11, `localhost` may resolve to IPv6 `::1`, which DevAuthTool does not bind by default.
+* **Resolution**: [EOSSDKComponent.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Mirror/Transports/EpicOnlineTransport/EOSSDKComponent.cs) explicitly connects to `127.0.0.1`, guaranteeing strict IPv4 communication.
 
-### 6.2 On the In-Game UI
-
-1. **`EOSNetworkHUD` (Top-Left Corner):**
-   * **EOS Status:** Displays `● EOS Status: Ready` in green when the SDK is initialized, or `● EOS Status: Initializing...` in yellow.
-   * **My Epic Product ID:** Shows your local 32-character PUID string with quick clipboard buttons.
-   * **Session State:** Displays active status (`HOST (EOS P2P)`, `CLIENT (Connected to Host)`, or `OFFLINE`).
-2. **`PlayerInventoryUI`:**
-   * Shows current player **Money** (`$100.00`).
-   * Displays the dynamic item list synchronized via Mirror's `SyncList<ItemData>`.
-3. **`VendingMachineUI`:**
-   * Shows item buttons with real-time routing badges:
-     * `<color=#80FF80>(Odd: Buyer)</color>`
-     * `<color=#FFD700>(Even: Host)</color>`
-   * Displays transaction response messages in `statusTMP`.
+### 10.5 TextMeshPro Missing Glyph Warning (Emoji Sanitization)
+* **Issue**: Unity logs `Missing glyph for character: 🏆` when rendering formatted strings in standard LiberationSans SDF font assets.
+* **Resolution**: [PlayerDistanceUI.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Scripts/UI/PlayerDistanceUI.cs) and [AchievementNotificationUI.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Scripts/UI/AchievementNotificationUI.cs) sanitize all serialized string formats, replacing unicode emojis with rich tags (`[UNLOCKED]`) and rendering icons via genuine UI Image sprites.
 
 ---
 
-### 6.3 In the Unity Hierarchy & Inspector (Runtime Debugging)
+## 11. Where to See Live Data & Diagnostics
 
-1. Select the spawned **Player** GameObject:
-   * **`NetworkIdentity` component:** Verify `netId`, `isLocalPlayer`, `isServer`, and `isClient`.
-   * **`PlayerInventory` component:** Inspect the `money` SyncVar and the `items` SyncList expanding as items are bought.
-2. Select the **`[NetworkManager]`** GameObject:
-   * Inspect `networkAddress`: Confirm it matches the Host's PUID.
-   * Inspect `transport`: Confirm `EosTransport` is active.
-   * Inspect `authenticator`: Confirm `EOSNetworkAuthenticator` is assigned.
-
----
-
-### 6.4 In the Epic Games Developer Portal
-
-Log into [dev.epicgames.com/portal](https://dev.epicgames.com/portal) to view backend analytics:
-
-1. **Game Services > Player Search:**
-   * Search for any player's Product User ID (PUID) to view account creation date, linked platforms, and authentication logs.
-2. **Game Services > Metrics:**
-   * **Concurrent Users (CCU):** Live graph showing active connected players.
-   * **Sessions:** Real-time metrics tracked through `BeginPlayerSession` in `EosTransport.cs`.
-3. **Product Settings > Clients & Permissions:**
-   * Verify that your Client Policy has **Peer2Peer** permissions enabled for seamless NAT punchthrough and Epic relay fallback.
+1. **Unity Editor Console**:
+   * `[EOSSDKComponent] Logged in as: <32-char PUID>`
+   * `[EOSPlayerStatsTracker] Ingesting distance metric: +5m (Total: 45.0m)`
+   * `[EOSPlayerStatsTracker] Achievement WALK_100M unlocked on EOS backend!`
+   * `[AchievementNotificationUI] Triggering slide-down toast for Century Walker`
+2. **In-Game Screen UI**:
+   * **Distance HUD**: Displays `Distance: XX.Xm / 100m` in Red, Yellow, or Green.
+   * **Top Banner**: Golden slide-down notification when 100m is reached.
+   * **Network HUD**: Displays local PUID with 1-click clipboard copy.
+   * **Vending Machine UI**: Badges each catalog item with `<color=#80FF80>(Odd: Buyer)</color>` or `<color=#FFD700>(Even: Host)</color>`.
+3. **Epic Games Developer Portal**:
+   * **Game Services > Player Search**: Look up any PUID to view real-time authentication timestamps, linked accounts, and unlocked achievements.
+   * **Game Services > Metrics**: View real-time Concurrent Users (CCU) and session counts.

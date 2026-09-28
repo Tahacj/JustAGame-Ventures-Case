@@ -41,7 +41,7 @@ namespace EpicTransport {
         }
 
         [Header("Misc")]
-        public LogLevel epicLoggerLevel = LogLevel.Error;
+        public LogLevel epicLoggerLevel = LogLevel.Info;
 
         [SerializeField] private bool collectPlayerMetrics = true;
         public static bool CollectPlayerMetrics {
@@ -239,9 +239,11 @@ namespace EpicTransport {
                 TickBudgetInMilliseconds = tickBudgetInMilliseconds
             };
 
-            EOS = PlatformInterface.Create(options);
             if (EOS == null) {
-                throw new System.Exception("Failed to create platform");
+                EOS = PlatformInterface.Create(options);
+                if (EOS == null) {
+                    throw new System.Exception("Failed to create platform");
+                }
             }
 
             if (checkForEpicLauncherAndRestart) {
@@ -260,11 +262,15 @@ namespace EpicTransport {
             }
 
             // If we use the Auth interface then only login into the Connect interface after finishing the auth interface login
+            // If we use the Auth interface then only login into the Connect interface after finishing the auth interface login
             // If we don't use the Auth interface we can directly login to the Connect interface
             if (authInterfaceLogin) {
                 if (authInterfaceCredentialType == Epic.OnlineServices.Auth.LoginCredentialType.Developer) {
-                    authInterfaceLoginCredentialId = "localhost:" + devAuthToolPort;
+                    authInterfaceLoginCredentialId = "127.0.0.1:" + devAuthToolPort;
                     authInterfaceCredentialToken = devAuthToolCredentialName;
+                } else {
+                    authInterfaceLoginCredentialId = null;
+                    authInterfaceCredentialToken = null;
                 }
 
                 // Login to Auth Interface
@@ -274,7 +280,7 @@ namespace EpicTransport {
                         Id = authInterfaceLoginCredentialId,
                         Token = authInterfaceCredentialToken
                     },
-                    ScopeFlags = Epic.OnlineServices.Auth.AuthScopeFlags.BasicProfile | Epic.OnlineServices.Auth.AuthScopeFlags.FriendsList | Epic.OnlineServices.Auth.AuthScopeFlags.Presence
+                    ScopeFlags = Epic.OnlineServices.Auth.AuthScopeFlags.BasicProfile
                 };
 
                 EOS.GetAuthInterface().Login(loginOptions, null, OnAuthInterfaceLogin);
@@ -298,31 +304,82 @@ namespace EpicTransport {
             Instance.InitializeImplementation();
         }
 
+        public static event System.Action<Result> OnLoginFailed;
+        public static event System.Action OnLoginSuccess;
+
+        public static void LoginWithEpicAccount() {
+            if (Instance.initialized) return;
+            Instance.isConnecting = false;
+            Instance.authInterfaceLogin = true;
+            Instance.authInterfaceCredentialType = Epic.OnlineServices.Auth.LoginCredentialType.AccountPortal;
+            Instance.connectInterfaceCredentialType = Epic.OnlineServices.ExternalCredentialType.Epic;
+            Instance.InitializeImplementation();
+        }
+
+        public static void LoginWithDevAuth(string credentialName, uint port = 7878) {
+            if (Instance.initialized) return;
+            Instance.isConnecting = false;
+            Instance.authInterfaceLogin = true;
+            Instance.authInterfaceCredentialType = Epic.OnlineServices.Auth.LoginCredentialType.Developer;
+            Instance.devAuthToolPort = port;
+            Instance.devAuthToolCredentialName = credentialName;
+            Instance.connectInterfaceCredentialType = Epic.OnlineServices.ExternalCredentialType.Epic;
+            Instance.InitializeImplementation();
+        }
+
+        public static void LoginWithDeviceId(string displayName = "User") {
+            if (Instance.initialized) return;
+            Instance.isConnecting = false;
+            Instance.authInterfaceLogin = false;
+            Instance.connectInterfaceCredentialType = Epic.OnlineServices.ExternalCredentialType.DeviceidAccessToken;
+            Instance.displayName = displayName;
+            Instance.InitializeImplementation();
+        }
+
+        public static void DeleteGuestDeviceId(System.Action<Result> onComplete = null) {
+            if (instance != null && instance.EOS != null) {
+                var connect = instance.EOS.GetConnectInterface();
+                if (connect != null) {
+                    connect.DeleteDeviceId(new Epic.OnlineServices.Connect.DeleteDeviceIdOptions(), null, (Epic.OnlineServices.Connect.DeleteDeviceIdCallbackInfo cb) => {
+                        Debug.Log("[EOSSDKComponent] DeleteDeviceId returned: " + cb.ResultCode);
+                        onComplete?.Invoke(cb.ResultCode);
+                    });
+                } else {
+                    onComplete?.Invoke(Result.NotConfigured);
+                }
+            } else {
+                onComplete?.Invoke(Result.NotConfigured);
+            }
+        }
+
         private void OnAuthInterfaceLogin(Epic.OnlineServices.Auth.LoginCallbackInfo loginCallbackInfo) {
             if (loginCallbackInfo.ResultCode == Result.Success) {
-                Debug.Log("Auth Interface Login succeeded");
+                Debug.Log("[EOSSDKComponent] Auth Interface Login succeeded");
 
                 string accountIdString;
                 Result result = loginCallbackInfo.LocalUserId.ToString(out accountIdString);
                 if (Result.Success == result) {
-                    Debug.Log("EOS User ID:" + accountIdString);
+                    Debug.Log("[EOSSDKComponent] EOS User ID: " + accountIdString);
 
                     localUserAccountIdString = accountIdString;
                     localUserAccountId = loginCallbackInfo.LocalUserId;
                 }
                 
                 ConnectInterfaceLogin();
-            } else if(Epic.OnlineServices.Common.IsOperationComplete(loginCallbackInfo.ResultCode)){
+            } else {
                 Debug.LogError("[EOSSDKComponent] Auth Interface Login failed: " + loginCallbackInfo.ResultCode);
                 isConnecting = false;
+                OnLoginFailed?.Invoke(loginCallbackInfo.ResultCode);
             }
         }
 
         private void OnCreateDeviceId(Epic.OnlineServices.Connect.CreateDeviceIdCallbackInfo createDeviceIdCallbackInfo) {
             if (createDeviceIdCallbackInfo.ResultCode == Result.Success || createDeviceIdCallbackInfo.ResultCode == Result.DuplicateNotAllowed) {
                 ConnectInterfaceLogin();
-            } else if(Epic.OnlineServices.Common.IsOperationComplete(createDeviceIdCallbackInfo.ResultCode)) {
-                Debug.Log("Device ID creation returned " + createDeviceIdCallbackInfo.ResultCode);
+            } else {
+                Debug.LogError("[EOSSDKComponent] Device ID creation failed: " + createDeviceIdCallbackInfo.ResultCode);
+                isConnecting = false;
+                OnLoginFailed?.Invoke(createDeviceIdCallbackInfo.ResultCode);
             }
         }
 
@@ -336,7 +393,10 @@ namespace EpicTransport {
                 if (result == Result.Success) {
                     connectInterfaceCredentialToken = token.AccessToken;
                 } else {
-                    Debug.LogError("Failed to retrieve User Auth Token");
+                    Debug.LogError("[EOSSDKComponent] Failed to retrieve User Auth Token: " + result);
+                    isConnecting = false;
+                    OnLoginFailed?.Invoke(result);
+                    return;
                 }
             } else if (connectInterfaceCredentialType == Epic.OnlineServices.ExternalCredentialType.DeviceidAccessToken) {
                 loginOptions.UserLoginInfo = new Epic.OnlineServices.Connect.UserLoginInfo();
@@ -352,12 +412,12 @@ namespace EpicTransport {
 
         private void OnConnectInterfaceLogin(Epic.OnlineServices.Connect.LoginCallbackInfo loginCallbackInfo) {
             if (loginCallbackInfo.ResultCode == Result.Success) {
-                Debug.Log("Connect Interface Login succeeded");
+                Debug.Log("[EOSSDKComponent] Connect Interface Login succeeded");
 
                 string productIdString;
                 Result result = loginCallbackInfo.LocalUserId.ToString(out productIdString);
                 if (Result.Success == result) {
-                    Debug.Log("EOS User Product ID:" + productIdString);
+                    Debug.Log("[EOSSDKComponent] EOS User Product ID: " + productIdString);
 
                     localUserProductIdString = productIdString;
                     localUserProductId = loginCallbackInfo.LocalUserId;
@@ -365,16 +425,26 @@ namespace EpicTransport {
                 
                 initialized = true;
                 isConnecting = false;
+                OnLoginSuccess?.Invoke();
 
                 var authExpirationOptions = new Epic.OnlineServices.Connect.AddNotifyAuthExpirationOptions();
                 authExpirationHandle = EOS.GetConnectInterface().AddNotifyAuthExpiration(authExpirationOptions, null, OnAuthExpiration);
-            } else if (Epic.OnlineServices.Common.IsOperationComplete(loginCallbackInfo.ResultCode)) {
-                Debug.Log("Login returned " + loginCallbackInfo.ResultCode + "\nRetrying...");
+            } else if (loginCallbackInfo.ResultCode == Result.InvalidUser) {
+                Debug.Log("[EOSSDKComponent] First-time login: Creating new EOS Connect user...");
                 EOS.GetConnectInterface().CreateUser(new Epic.OnlineServices.Connect.CreateUserOptions() { ContinuanceToken = loginCallbackInfo.ContinuanceToken }, null, (Epic.OnlineServices.Connect.CreateUserCallbackInfo cb) => {
-                    if (cb.ResultCode != Result.Success) { Debug.Log(cb.ResultCode); return; }
+                    if (cb.ResultCode != Result.Success) {
+                        Debug.LogError("[EOSSDKComponent] Connect CreateUser failed: " + cb.ResultCode);
+                        isConnecting = false;
+                        OnLoginFailed?.Invoke(cb.ResultCode);
+                        return;
+                    }
                     localUserProductId = cb.LocalUserId;
                     ConnectInterfaceLogin();
                 });
+            } else {
+                Debug.LogError("[EOSSDKComponent] Connect Interface Login failed: " + loginCallbackInfo.ResultCode);
+                isConnecting = false;
+                OnLoginFailed?.Invoke(loginCallbackInfo.ResultCode);
             }
         }
         

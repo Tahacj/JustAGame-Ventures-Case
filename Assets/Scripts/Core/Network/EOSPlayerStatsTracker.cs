@@ -10,7 +10,7 @@ namespace JustAGame.Core.Network
 {
     /// <summary>
     /// Tracks client authoritative walking distance, ingests distance metrics into EOS Stats Interface,
-    /// and unlocks the 100m walking achievement through the EOS Achievements Interface.
+    /// and manages the 100m walking achievement through the EOS Achievements Interface.
     /// Follows strict repository DESIGN_PATTERNS.md zero-slop guidelines.
     /// Pure MonoBehaviour attached to the local player to guarantee zero Mirror netIdentity NREs.
     /// </summary>
@@ -25,16 +25,21 @@ namespace JustAGame.Core.Network
         [Header("Distance Tracking")]
         [SerializeField] private float totalDistanceWalked = 0f;
         [SerializeField] private bool achievementUnlocked = false;
+        [SerializeField] private bool isAchievementBackendSynced = false;
 
         public float TotalDistanceWalked => totalDistanceWalked;
         public bool IsAchievementUnlocked => achievementUnlocked;
+        public bool IsAchievementBackendSynced => isAchievementBackendSynced;
 
         public static EOSPlayerStatsTracker LocalInstance { get; private set; }
 
         public static event Action<float, float> OnDistanceUpdated;
         public static event Action<string> OnAchievementUnlockedEvent;
+        public static event Action<bool> OnAchievementSyncStatusChanged;
 
         private float _unreportedDistance = 0f;
+        private ulong _notifyUnlockId = 0;
+        private string _lastSyncedPuid = string.Empty;
 
         public void InitializeLocal()
         {
@@ -42,7 +47,25 @@ namespace JustAGame.Core.Network
             {
                 LocalInstance = this;
                 Debug.Log($"[EOSPlayerStatsTracker] Local tracking initialized for player: {gameObject.name}");
+
+                // Instantly restore cached distance from previous sessions on this machine
+                RestoreCachedDistance();
+
+                // Notify UI listeners with current distance
                 OnDistanceUpdated?.Invoke(totalDistanceWalked, ACHIEVEMENT_TARGET_DISTANCE);
+
+                // Fetch authoritative stats and achievements from EOS Cloud if already initialized
+                if (EOSSDKComponent.Initialized && EOSSDKComponent.LocalUserProductId.IsNotNull())
+                {
+                    _lastSyncedPuid = EOSSDKComponent.LocalUserProductIdString;
+                    QueryStatsStatus();
+                    QueryAchievementsStatus();
+                    SubscribeToUnlockNotifications();
+                }
+                else
+                {
+                    // EOS login deferred (waiting for EOSLoginUI or background auth)
+                }
             }
             catch (Exception ex)
             {
@@ -69,10 +92,125 @@ namespace JustAGame.Core.Network
             }
         }
 
+        private void Start()
+        {
+            try
+            {
+                // Secondary check if EOS initialized after local player spawned
+                if (EOSSDKComponent.Initialized && EOSSDKComponent.LocalUserProductId.IsNotNull())
+                {
+                    _lastSyncedPuid = EOSSDKComponent.LocalUserProductIdString;
+                    RestoreCachedDistance();
+                    QueryStatsStatus();
+                    QueryAchievementsStatus();
+                    SubscribeToUnlockNotifications();
+                }
+                else
+                {
+                    // Notification already active or EOS not ready
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[EOSPlayerStatsTracker] Exception in Start: {ex.Message}");
+            }
+        }
+
+        private void Update()
+        {
+            try
+            {
+                // Monitor EOSSDKComponent for deferred login initialization (e.g. from EOSLoginUI)
+                if (EOSSDKComponent.Initialized && EOSSDKComponent.LocalUserProductId.IsNotNull())
+                {
+                    string currentPuid = EOSSDKComponent.LocalUserProductIdString;
+                    if (currentPuid != _lastSyncedPuid && !string.IsNullOrEmpty(currentPuid))
+                    {
+                        _lastSyncedPuid = currentPuid;
+                        Debug.Log($"[EOSPlayerStatsTracker] Active EOS session detected for user: {currentPuid}. Synchronizing cloud stats and achievements...");
+
+                        RestoreCachedDistance();
+                        QueryStatsStatus();
+                        QueryAchievementsStatus();
+                        SubscribeToUnlockNotifications();
+
+                        if (_unreportedDistance > 0f)
+                        {
+                            IngestDistanceMetric(Mathf.CeilToInt(_unreportedDistance));
+                            _unreportedDistance = 0f;
+                        }
+                        else
+                        {
+                            // No pending unreported distance
+                        }
+                    }
+                    else
+                    {
+                        // PUID session unchanged
+                    }
+                }
+                else
+                {
+                    // EOS not yet logged in / initialized
+                }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                if (Input.GetKeyDown(KeyCode.F9))
+                {
+                    ResetLocalProgress();
+                }
+#endif
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[EOSPlayerStatsTracker] Exception in Update: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Resets the local walking distance and achievement status back to 0m (RED).
+        /// Can be triggered via Inspector context menu during play mode or via F9 key.
+        /// </summary>
+        [ContextMenu("Reset Local Distance Progress (0m)")]
+        public void ResetLocalProgress()
+        {
+            try
+            {
+                totalDistanceWalked = 0f;
+                achievementUnlocked = false;
+                isAchievementBackendSynced = false;
+                _unreportedDistance = 0f;
+
+                string puid = EOSSDKComponent.LocalUserProductIdString;
+                string key = string.IsNullOrEmpty(puid) ? "EOS_LocalDistance" : $"EOS_Distance_{puid}";
+                string unlockKey = string.IsNullOrEmpty(puid) ? "EOS_LocalAchUnlocked" : $"EOS_AchUnlocked_{puid}";
+                string syncKey = string.IsNullOrEmpty(puid) ? "EOS_LocalAchSynced" : $"EOS_AchSynced_{puid}";
+
+                PlayerPrefs.DeleteKey(key);
+                PlayerPrefs.DeleteKey(unlockKey);
+                PlayerPrefs.DeleteKey(syncKey);
+                PlayerPrefs.DeleteKey("EOS_LocalDistance");
+                PlayerPrefs.DeleteKey("EOS_LocalAchUnlocked");
+                PlayerPrefs.DeleteKey("EOS_LocalAchSynced");
+                PlayerPrefs.Save();
+
+                OnDistanceUpdated?.Invoke(0f, ACHIEVEMENT_TARGET_DISTANCE);
+                OnAchievementSyncStatusChanged?.Invoke(false);
+
+                Debug.Log("[EOSPlayerStatsTracker] Local distance and achievement progress successfully reset to 0.0m (RED).");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[EOSPlayerStatsTracker] Exception in ResetLocalProgress: {ex.Message}");
+            }
+        }
+
         private void OnDestroy()
         {
             try
             {
+                UnsubscribeFromUnlockNotifications();
+
                 if (LocalInstance == this)
                 {
                     LocalInstance = null;
@@ -137,12 +275,45 @@ namespace JustAGame.Core.Network
             }
         }
 
+        private void SetBackendSynced(bool synced)
+        {
+            try
+            {
+                if (isAchievementBackendSynced != synced)
+                {
+                    isAchievementBackendSynced = synced;
+                    OnAchievementSyncStatusChanged?.Invoke(synced);
+                    SaveCachedDistance();
+                    Debug.Log($"[EOSPlayerStatsTracker] Achievement backend sync status updated: {synced}");
+                }
+                else
+                {
+                    // Sync status unchanged
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[EOSPlayerStatsTracker] Exception in SetBackendSynced: {ex.Message}");
+            }
+        }
+
         private void TriggerAchievementUnlock()
         {
             try
             {
-                Debug.Log("[EOSPlayerStatsTracker] 🏆 ACHIEVEMENT UNLOCKED: Century Walker (100m Walked)!");
+                Debug.Log("[EOSPlayerStatsTracker] [ACHIEVEMENT UNLOCKED] Century Walker (100m Walked)!");
                 OnAchievementUnlockedEvent?.Invoke(ACHIEVEMENT_ID_100M);
+
+                // Flush any remaining unreported distance so backend stat evaluation triggers immediately
+                if (_unreportedDistance > 0.0f)
+                {
+                    IngestDistanceMetric(Mathf.CeilToInt(_unreportedDistance));
+                    _unreportedDistance = 0f;
+                }
+                else
+                {
+                    // Stat is up to date
+                }
 
                 if (!EOSSDKComponent.Initialized)
                 {
@@ -180,10 +351,21 @@ namespace JustAGame.Core.Network
                                     if (callbackInfo.ResultCode == Result.Success)
                                     {
                                         Debug.Log($"[EOSPlayerStatsTracker] Successfully pushed unlock for '{ACHIEVEMENT_ID_100M}' to EOS Backend!");
+                                        SetBackendSynced(true);
+                                    }
+                                    else if (callbackInfo.ResultCode == Result.NoChange || callbackInfo.ResultCode == Result.DuplicateNotAllowed)
+                                    {
+                                        Debug.Log($"[EOSPlayerStatsTracker] Achievement '{ACHIEVEMENT_ID_100M}' is already unlocked on EOS Backend.");
+                                        SetBackendSynced(true);
+                                    }
+                                    else if (callbackInfo.ResultCode == Result.NotConfigured)
+                                    {
+                                        Debug.Log($"[EOSPlayerStatsTracker] Note: Achievement '{ACHIEVEMENT_ID_100M}' is configured as stat-driven (Rule: {STAT_NAME_DISTANCE} >= 100). The EOS backend automatically unlocks it via stat ingestion.");
+                                        QueryAchievementsStatus();
                                     }
                                     else
                                     {
-                                        Debug.Log($"[EOSPlayerStatsTracker] EOS Achievements Unlock returned: {callbackInfo.ResultCode} (Ensure '{ACHIEVEMENT_ID_100M}' definition is configured in Epic Developer Portal).");
+                                        Debug.Log($"[EOSPlayerStatsTracker] EOS Achievements Unlock returned: {callbackInfo.ResultCode}.");
                                     }
                                 }
                                 catch (Exception cbEx)
@@ -212,6 +394,9 @@ namespace JustAGame.Core.Network
                 else
                 {
                     Debug.Log($"[EOSPlayerStatsTracker] Ingesting distance metric: +{metersWalked}m (Total: {totalDistanceWalked:F1}m)");
+
+                    // Always ensure local cache is updated immediately to guarantee zero data loss
+                    SaveCachedDistance();
 
                     if (!EOSSDKComponent.Initialized)
                     {
@@ -254,10 +439,20 @@ namespace JustAGame.Core.Network
                                         if (callbackInfo.ResultCode == Result.Success)
                                         {
                                             Debug.Log($"[EOSPlayerStatsTracker] Successfully ingested {metersWalked}m for stat '{STAT_NAME_DISTANCE}' to EOS Backend!");
+
+                                            // If distance milestone reached, verify backend stat rule evaluation
+                                            if (totalDistanceWalked >= ACHIEVEMENT_TARGET_DISTANCE && !isAchievementBackendSynced)
+                                            {
+                                                QueryAchievementsStatus();
+                                            }
+                                            else
+                                            {
+                                                // Achievement already synced or milestone not yet reached
+                                            }
                                         }
                                         else
                                         {
-                                            Debug.Log($"[EOSPlayerStatsTracker] EOS Stats Ingest returned: {callbackInfo.ResultCode} (Stat '{STAT_NAME_DISTANCE}' can be registered in Developer Portal > Stats).");
+                                            Debug.Log($"[EOSPlayerStatsTracker] EOS Stats Ingest returned: {callbackInfo.ResultCode} (Stat '{STAT_NAME_DISTANCE}' registered in Developer Portal > Stats).");
                                         }
                                     }
                                     catch (Exception cbEx)
@@ -273,6 +468,362 @@ namespace JustAGame.Core.Network
             catch (Exception ex)
             {
                 Debug.LogError($"[EOSPlayerStatsTracker] Exception in IngestDistanceMetric: {ex.Message}");
+            }
+        }
+
+        private void SubscribeToUnlockNotifications()
+        {
+            try
+            {
+                if (!EOSSDKComponent.Initialized || _notifyUnlockId != 0)
+                {
+                    return;
+                }
+                else
+                {
+                    var achievementsInterface = EOSSDKComponent.GetAchievementsInterface();
+                    if (achievementsInterface.IsNull())
+                    {
+                        return;
+                    }
+                    else
+                    {
+                        var options = new AddNotifyAchievementsUnlockedV2Options();
+                        _notifyUnlockId = achievementsInterface.AddNotifyAchievementsUnlockedV2(options, null, (OnAchievementsUnlockedCallbackV2Info callbackInfo) =>
+                        {
+                            try
+                            {
+                                if (callbackInfo.AchievementId == ACHIEVEMENT_ID_100M)
+                                {
+                                    achievementUnlocked = true;
+                                    SetBackendSynced(true);
+                                    OnAchievementUnlockedEvent?.Invoke(callbackInfo.AchievementId);
+                                    Debug.Log($"[EOSPlayerStatsTracker] EOS Backend verified achievement unlock: {callbackInfo.AchievementId} at {callbackInfo.UnlockTime}!");
+                                }
+                                else
+                                {
+                                    OnAchievementUnlockedEvent?.Invoke(callbackInfo.AchievementId);
+                                    Debug.Log($"[EOSPlayerStatsTracker] EOS Backend unlocked achievement: {callbackInfo.AchievementId}");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Debug.LogError($"[EOSPlayerStatsTracker] Exception in OnAchievementsUnlockedCallbackV2: {ex.Message}");
+                            }
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[EOSPlayerStatsTracker] Exception in SubscribeToUnlockNotifications: {ex.Message}");
+            }
+        }
+
+        private void UnsubscribeFromUnlockNotifications()
+        {
+            try
+            {
+                if (_notifyUnlockId != 0 && EOSSDKComponent.Initialized)
+                {
+                    var achievementsInterface = EOSSDKComponent.GetAchievementsInterface();
+                    if (achievementsInterface.IsNotNull())
+                    {
+                        achievementsInterface.RemoveNotifyAchievementsUnlocked(_notifyUnlockId);
+                    }
+                    else
+                    {
+                        // AchievementsInterface null
+                    }
+                    _notifyUnlockId = 0;
+                }
+                else
+                {
+                    // Not subscribed or EOS uninitialized
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[EOSPlayerStatsTracker] Exception in UnsubscribeFromUnlockNotifications: {ex.Message}");
+            }
+        }
+
+        private void QueryAchievementsStatus()
+        {
+            try
+            {
+                if (!EOSSDKComponent.Initialized)
+                {
+                    return;
+                }
+                else
+                {
+                    ProductUserId localPuid = EOSSDKComponent.LocalUserProductId;
+                    if (localPuid.IsNull())
+                    {
+                        return;
+                    }
+                    else
+                    {
+                        var achievementsInterface = EOSSDKComponent.GetAchievementsInterface();
+                        if (achievementsInterface.IsNull())
+                        {
+                            return;
+                        }
+                        else
+                        {
+                            var options = new QueryPlayerAchievementsOptions
+                            {
+                                LocalUserId = localPuid,
+                                TargetUserId = localPuid
+                            };
+
+                            achievementsInterface.QueryPlayerAchievements(options, null, (OnQueryPlayerAchievementsCompleteCallbackInfo callbackInfo) =>
+                            {
+                                try
+                                {
+                                    if (callbackInfo.ResultCode == Result.Success)
+                                    {
+                                        var copyOptions = new CopyPlayerAchievementByAchievementIdOptions
+                                        {
+                                            LocalUserId = localPuid,
+                                            TargetUserId = localPuid,
+                                            AchievementId = ACHIEVEMENT_ID_100M
+                                        };
+
+                                        Result copyResult = achievementsInterface.CopyPlayerAchievementByAchievementId(copyOptions, out PlayerAchievement playerAch);
+                                        if (copyResult == Result.Success && playerAch.IsNotNull())
+                                        {
+                                            if (playerAch.UnlockTime.HasValue || playerAch.Progress >= 100.0)
+                                            {
+                                                achievementUnlocked = true;
+                                                totalDistanceWalked = Mathf.Max(totalDistanceWalked, ACHIEVEMENT_TARGET_DISTANCE);
+                                                SetBackendSynced(true);
+                                                SaveCachedDistance();
+                                                OnDistanceUpdated?.Invoke(totalDistanceWalked, ACHIEVEMENT_TARGET_DISTANCE);
+                                                Debug.Log($"[EOSPlayerStatsTracker] Achievement '{ACHIEVEMENT_ID_100M}' is verified UNLOCKED on EOS backend (Progress: {playerAch.Progress}%).");
+                                            }
+                                            else
+                                            {
+                                                Debug.Log($"[EOSPlayerStatsTracker] Achievement '{ACHIEVEMENT_ID_100M}' current progress on backend: {playerAch.Progress}%.");
+                                            }
+                                        }
+                                        else
+                                        {
+                                            // Achievement not yet unlocked on backend
+                                        }
+                                    }
+                                    else
+                                    {
+                                        Debug.Log($"[EOSPlayerStatsTracker] QueryPlayerAchievements returned: {callbackInfo.ResultCode}");
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    Debug.LogError($"[EOSPlayerStatsTracker] Exception in QueryPlayerAchievements callback: {ex.Message}");
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[EOSPlayerStatsTracker] Exception in QueryAchievementsStatus: {ex.Message}");
+            }
+        }
+
+        private void QueryStatsStatus()
+        {
+            try
+            {
+                if (!EOSSDKComponent.Initialized)
+                {
+                    return;
+                }
+                else
+                {
+                    ProductUserId localPuid = EOSSDKComponent.LocalUserProductId;
+                    if (localPuid.IsNull())
+                    {
+                        return;
+                    }
+                    else
+                    {
+                        var statsInterface = EOSSDKComponent.GetStatsInterface();
+                        if (statsInterface.IsNull())
+                        {
+                            return;
+                        }
+                        else
+                        {
+                            var options = new QueryStatsOptions
+                            {
+                                LocalUserId = localPuid,
+                                TargetUserId = localPuid,
+                                StatNames = new string[] { STAT_NAME_DISTANCE }
+                            };
+
+                            statsInterface.QueryStats(options, null, (OnQueryStatsCompleteCallbackInfo callbackInfo) =>
+                            {
+                                try
+                                {
+                                    if (callbackInfo.ResultCode == Result.Success)
+                                    {
+                                        var copyOptions = new CopyStatByNameOptions
+                                        {
+                                            TargetUserId = localPuid,
+                                            Name = STAT_NAME_DISTANCE
+                                        };
+
+                                        Result copyResult = statsInterface.CopyStatByName(copyOptions, out Stat stat);
+                                        if (copyResult == Result.Success && stat.IsNotNull())
+                                        {
+                                            float cloudDistance = (float)stat.Value;
+                                            Debug.Log($"[EOSPlayerStatsTracker] Successfully fetched cloud distance from EOS: {cloudDistance}m (Current local: {totalDistanceWalked:F1}m)");
+
+                                            if (cloudDistance > totalDistanceWalked)
+                                            {
+                                                totalDistanceWalked = cloudDistance;
+                                            }
+                                            else
+                                            {
+                                                // Local distance already at or above cloud snapshot
+                                            }
+
+                                            if (totalDistanceWalked >= ACHIEVEMENT_TARGET_DISTANCE)
+                                            {
+                                                achievementUnlocked = true;
+                                                if (!isAchievementBackendSynced)
+                                                {
+                                                    QueryAchievementsStatus();
+                                                }
+                                                else
+                                                {
+                                                    // Already verified synced
+                                                }
+                                            }
+                                            else
+                                            {
+                                                // Target not yet reached
+                                            }
+
+                                            SaveCachedDistance();
+                                            OnDistanceUpdated?.Invoke(totalDistanceWalked, ACHIEVEMENT_TARGET_DISTANCE);
+                                        }
+                                        else
+                                        {
+                                            Debug.Log($"[EOSPlayerStatsTracker] Stat '{STAT_NAME_DISTANCE}' has no recorded value on EOS backend yet.");
+                                        }
+                                    }
+                                    else
+                                    {
+                                        Debug.Log($"[EOSPlayerStatsTracker] QueryStats returned: {callbackInfo.ResultCode}");
+                                    }
+                                }
+                                catch (Exception cbEx)
+                                {
+                                    Debug.LogError($"[EOSPlayerStatsTracker] Exception in QueryStats callback: {cbEx.Message}");
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[EOSPlayerStatsTracker] Exception in QueryStatsStatus: {ex.Message}");
+            }
+        }
+
+        private void RestoreCachedDistance()
+        {
+            try
+            {
+                string puid = EOSSDKComponent.LocalUserProductIdString;
+                string key = string.IsNullOrEmpty(puid) ? "EOS_LocalDistance" : $"EOS_Distance_{puid}";
+                string unlockKey = string.IsNullOrEmpty(puid) ? "EOS_LocalAchUnlocked" : $"EOS_AchUnlocked_{puid}";
+                string syncKey = string.IsNullOrEmpty(puid) ? "EOS_LocalAchSynced" : $"EOS_AchSynced_{puid}";
+
+                float cached = PlayerPrefs.GetFloat(key, 0f);
+                bool cachedUnlocked = PlayerPrefs.GetInt(unlockKey, 0) == 1;
+                bool cachedSynced = PlayerPrefs.GetInt(syncKey, 0) == 1;
+
+                if (cached > totalDistanceWalked)
+                {
+                    totalDistanceWalked = cached;
+                }
+                else
+                {
+                    // Existing is higher or equal
+                }
+
+                if (cachedUnlocked || totalDistanceWalked >= ACHIEVEMENT_TARGET_DISTANCE)
+                {
+                    achievementUnlocked = true;
+                }
+                else
+                {
+                    // Under target
+                }
+
+                if (cachedSynced)
+                {
+                    SetBackendSynced(true);
+                }
+                else
+                {
+                    // Not verified synced yet
+                }
+
+                OnDistanceUpdated?.Invoke(totalDistanceWalked, ACHIEVEMENT_TARGET_DISTANCE);
+                Debug.Log($"[EOSPlayerStatsTracker] Restored cached profile: Dist={totalDistanceWalked:F1}m, Unlocked={achievementUnlocked}, Synced={isAchievementBackendSynced} for {key}");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[EOSPlayerStatsTracker] Exception in RestoreCachedDistance: {ex.Message}");
+            }
+        }
+
+        private void SaveCachedDistance()
+        {
+            try
+            {
+                string puid = EOSSDKComponent.LocalUserProductIdString;
+                string key = string.IsNullOrEmpty(puid) ? "EOS_LocalDistance" : $"EOS_Distance_{puid}";
+                string unlockKey = string.IsNullOrEmpty(puid) ? "EOS_LocalAchUnlocked" : $"EOS_AchUnlocked_{puid}";
+                string syncKey = string.IsNullOrEmpty(puid) ? "EOS_LocalAchSynced" : $"EOS_AchSynced_{puid}";
+
+                PlayerPrefs.SetFloat(key, totalDistanceWalked);
+                PlayerPrefs.SetInt(unlockKey, achievementUnlocked ? 1 : 0);
+                PlayerPrefs.SetInt(syncKey, isAchievementBackendSynced ? 1 : 0);
+                PlayerPrefs.Save();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[EOSPlayerStatsTracker] Exception in SaveCachedDistance: {ex.Message}");
+            }
+        }
+
+        private void OnApplicationQuit()
+        {
+            try
+            {
+                if (_unreportedDistance > 0f)
+                {
+                    IngestDistanceMetric(Mathf.CeilToInt(_unreportedDistance));
+                    _unreportedDistance = 0f;
+                }
+                else
+                {
+                    // Up to date
+                }
+
+                SaveCachedDistance();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[EOSPlayerStatsTracker] Exception in OnApplicationQuit: {ex.Message}");
             }
         }
     }

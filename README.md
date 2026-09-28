@@ -57,3 +57,73 @@ Aşağıdaki şema; istemci-sunucu (Client-Server) mimarisi, mesafe/tetikleyici 
 
 ![System Flowchart](image.jpg)
 
+---
+
+# Epic Online Services (EOS) & Mirror Complete Integration
+
+Bu proje, geleneksel IP/Port port-forwarding gereksinimini ortadan kaldırarak **Mirror 96.0.1** ağ katmanını **Epic Online Services (EOS) P2P Transport** ile tam uyumlu hale getirmiştir. Oyuncular küresel ölçekte **Product User ID (PUID)** üzerinden NAT punchthrough ve Epic Relay sunucuları aracılığıyla birbirlerine bağlanabilirler.
+
+> [!NOTE]
+> Detaylı mimari açıklamalar, kaynak kod referansları ve güvenlik incelemeleri için lütfen **[EOS_INTEGRATION_GUIDE.md](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/EOS_INTEGRATION_GUIDE.md)** belgesini inceleyin.
+
+---
+
+## Temel Özellikler & Eklenen Sistemler
+
+### 1. Kimlik Doğrulama & Çoklu Hesap Yönetimi (EOSLoginUI)
+* **Quick Guest Login (Device ID)**: Windows donanım anahtarı üzerinden tek tıkla oturum açma (`Connect.CreateDeviceId`).
+* **DevAuthTool Desteği**: Tek bir PC'de birden fazla istemciyi (`Player1`, `Player2`) test edebilmek için yerel geliştirici kimlik sunucusu desteği (`127.0.0.1:7878`).
+* **Epic Games Hesabı (EAS)**: Web tarayıcısı üzerinden resmi Epic Games OAuth / Account Portal oturumu açma.
+* **14 Saniye Watchdog Koruması**: Ağ kopması veya iptal edilen tarayıcı pencerelerinde arayüzün kilitlenmesini engelleyen zaman aşımı güvencesi.
+
+### 2. Yürüme Mesafesi Takibi & EOS Cloud Stats (EOSPlayerStatsTracker)
+* İstemci-yetkili yürüme mesafesi yerel oyuncudan (`ClientAuthoritativeMovement`) anlık toplanır.
+* Ağ yükünü ve API limitlerini korumak için her **5 metrede bir** EOS Stats arayüzüne (`DISTANCE_WALKED`) toplu paket halinde iletilir.
+* Çift yönlü kalıcılık: Veriler `PlayerPrefs` üzerinde saklanır ve sonraki girişlerde buluttaki verilerle uzlaştırılarak anında geri yüklenir.
+
+### 3. 3 Durumlu Mesafe Görsel Göstergesi (PlayerDistanceUI)
+Ekrandaki yürüme mesafesi metni TextMeshPro ile 3 farklı renk durumunda güncellenir:
+* 🔴 **Kırmızı** (`#FF5555`): 100 metrenin altında (Tamamlanmadı).
+* 🟡 **Sarı** (`#FFDD44`): 100 metre yerel olarak aşıldı, EOS bulut onay süreci devam ediyor.
+* 🟢 **Yeşil** (`#55FF55`): `WALK_100M` başarımı EOS bulutunda başarıyla kilitlendi ve doğrulandı.
+
+### 4. Kayan Başarım Bildirimi (AchievementNotificationUI)
+* Unity Editor içinde Epic'in yerel arayüzünün (`Failed to subclass window`) devre dışı kalması sorununu çözer.
+* Ekrandan bağımsız, en üst katmanda (`sortingOrder = 999`) çalışan `AchievementOverlayCanvas` üretir.
+* 100 metre milestone'u tamamlandığında altın çerçeveli, 56x56 kupa ikonlu şık bir bildirim yukarıdan yumuşak bir animasyonla kayarak gelir, 4 saniye görünür kalır ve yukarı kayarak kapanır.
+
+### 5. Sıfır-Güven Taşıma Güvenliği (EosTransport & EOSNetworkAuthenticator)
+* **Bağlantı Gaspı (Hijacking) Engeli**: Bilinmeyen PUID'lerin paket göndermesini engelleyen dinamik `ConnectionFilter` ve anında `CloseConnection` reddi.
+* **Kimlik Sahteciliği (Spoofing) Engeli**: Fiziksel ağ soket adresini bildirilen PUID ile doğrulayan anti-spoofing `EOSNetworkAuthenticator`.
+* **Bellek & GC Optimizasyonu**: Tek parça paketler için sıfır-tahsisli (zero-allocation) hızlı dönüş yolu.
+* **Oturum İzolasyonu**: Her maç başlatıldığında üretilen rastgele `MatchSessionSocketName` ile eski paketlerin yeni oturumlara sızması engellenmiştir.
+
+### 6. Otomat Ekonomisi (VendingMachine)
+* Mesafe denetimi (`Proximity Guard`), bakiye ve katalog doğrulaması sunucu tarafında yapılır.
+* **Tek Numaralı Ürünler (1, 3)**: Satın alan oyuncunun envanterine eklenir.
+* **Çift Numaralı Ürünler (2, 4)**: Host oyuncunun envanterine yönlendirilir.
+
+---
+
+## Kontroller & Geliştirici Kısayolları
+
+| Tuş / Menü | İşlev |
+| :--- | :--- |
+| **`W, A, S, D`** | Oyuncu Hareketi |
+| **`E`** | Otomat (Vending Machine) Etkileşimi |
+| **`F7`** | Kayan başarım bildirim animasyonunu anında test etme / önizleme |
+| **`F9`** | Yerel yürüme mesafesi önbelleğini sıfırlama (0m / Kırmızı duruma döndürme) |
+| **`EOS Tools > Reset Local Walking Distance Cache`** | Unity Editor üst menüsünden yerel yürüme önbelleğini silme |
+| **`EOS Tools > Reset Guest Device ID`** | Windows keychain üzerindeki Device ID'yi silerek yepyeni 0m Guest kullanıcı oluşturma |
+| **`EOS Tools > Print Current Player PUID`** | Aktif PUID'yi konsola yazdırma ve panoya kopyalama |
+
+---
+
+## Hızlı Başlangıç & Test Rehberi
+
+### Tek PC'de İki İstemci Testi (DevAuthTool):
+1. `Assets/Mirror/Transports/EpicOnlineTransport/DevAuthTool/Tool~/EOS_DevAuthTool.exe` aracını çalıştırın, portu `7878` yapıp **Start** deyin.
+2. `Player1` ve `Player2` profillerini ekleyin.
+3. Unity Editor'da oyunu başlatıp `Player1` ile **Login (DevAuth)** yapın ve **Host Game (EOS P2P)** butonuna tıklayın. PUID'yi kopyalayın.
+4. `Build/EOSGame.exe` çalıştırıp `Player2` ile **Login (DevAuth)** yapın, kopyalanan PUID'yi yapıştırıp **Connect Client** deyin.
+5. Karakterlerin birbirini gerçek zamanlı gördüğünü, otomat alışverişlerini ve mesafe/başarım sisteminin çalıştığını gözlemleyin.
