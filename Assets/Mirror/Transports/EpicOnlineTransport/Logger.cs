@@ -1,4 +1,4 @@
-﻿using Epic.OnlineServices.Logging;
+using Epic.OnlineServices.Logging;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -21,8 +21,12 @@ namespace EpicTransport {
                 case LogLevel.Fatal:
                     Debug.LogException(new Exception($"Epic Manager: Category - {message.Category} Message - {message.Message}"));
                     break;
+                case LogLevel.Verbose:
+                case LogLevel.VeryVerbose:
+                    Debug.Log($"[EOS SDK] [{message.Category}] {message.Message}");
+                    break;
                 default:
-                    Debug.Log($"Epic Manager: Unknown log processing. Category - {message.Category} Message - {message.Message}");
+                    Debug.Log($"Epic Manager: Category - {message.Category} Message - {message.Message}");
                     break;
             }
         }

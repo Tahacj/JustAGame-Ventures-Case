@@ -155,10 +155,17 @@ namespace JustAGame.Core.Network
                 }
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
+#if ENABLE_INPUT_SYSTEM
+                if (UnityEngine.InputSystem.Keyboard.current != null && UnityEngine.InputSystem.Keyboard.current.f9Key.wasPressedThisFrame)
+                {
+                    ResetLocalProgress();
+                }
+#else
                 if (Input.GetKeyDown(KeyCode.F9))
                 {
                     ResetLocalProgress();
                 }
+#endif
 #endif
             }
             catch (Exception ex)

@@ -70,7 +70,8 @@ Bu proje, geleneksel IP/Port port-forwarding gereksinimini ortadan kaldırarak *
 
 ## Temel Özellikler & Eklenen Sistemler
 
-### 1. Kimlik Doğrulama & Çoklu Hesap Yönetimi (EOSLoginUI)
+### 1. Kimlik Doğrulama & Çoklu Hesap Yönetimi (EOSLoginUI & SteamAuthManager)
+* **Steam Authentication (Modern WebApi Session Ticket)**: Steam istemcisi üzerinden `SteamUser.GetAuthTicketForWebApi("epiconlineservices")` çağrısıyla alınan oturum bileti `ExternalCredentialType.SteamSessionTicket` (18) ile EOS Connect arayüzüne iletilir. Valve ve Epic sunucuları arasında özel şifreleme anahtarı gerektirmeden doğrulanır.
 * **Quick Guest Login (Device ID)**: Windows donanım anahtarı üzerinden tek tıkla oturum açma (`Connect.CreateDeviceId`).
 * **DevAuthTool Desteği**: Tek bir PC'de birden fazla istemciyi (`Player1`, `Player2`) test edebilmek için yerel geliştirici kimlik sunucusu desteği (`127.0.0.1:7878`).
 * **Epic Games Hesabı (EAS)**: Web tarayıcısı üzerinden resmi Epic Games OAuth / Account Portal oturumu açma.
@@ -92,7 +93,8 @@ Ekrandaki yürüme mesafesi metni TextMeshPro ile 3 farklı renk durumunda günc
 * Ekrandan bağımsız, en üst katmanda (`sortingOrder = 999`) çalışan `AchievementOverlayCanvas` üretir.
 * 100 metre milestone'u tamamlandığında altın çerçeveli, 56x56 kupa ikonlu şık bir bildirim yukarıdan yumuşak bir animasyonla kayarak gelir, 4 saniye görünür kalır ve yukarı kayarak kapanır.
 
-### 5. Sıfır-Güven Taşıma Güvenliği (EosTransport & EOSNetworkAuthenticator)
+### 5. Sıfır-Güven Taşıma Güvenliği & SDK v1.19.2.1 Yükseltmesi
+* **Resmi EOS SDK v1.19.2.1 Yükseltmesi**: Eski v1.13 kütüphanesindeki `cmp ecx, 15` credential validasyon sınırını aşmak için resmi EOS SDK v1.19.2.1 x64 kütüphanesine (`19,548,600` bayt) yükseltilmiştir (`SteamSessionTicket = 18`).
 * **Bağlantı Gaspı (Hijacking) Engeli**: Bilinmeyen PUID'lerin paket göndermesini engelleyen dinamik `ConnectionFilter` ve anında `CloseConnection` reddi.
 * **Kimlik Sahteciliği (Spoofing) Engeli**: Fiziksel ağ soket adresini bildirilen PUID ile doğrulayan anti-spoofing `EOSNetworkAuthenticator`.
 * **Bellek & GC Optimizasyonu**: Tek parça paketler için sıfır-tahsisli (zero-allocation) hızlı dönüş yolu.
@@ -119,11 +121,18 @@ Ekrandaki yürüme mesafesi metni TextMeshPro ile 3 farklı renk durumunda günc
 
 ---
 
-## Hızlı Başlangıç & Test Rehberi
+## Hızlı Başlangıç & Doğrulama Rehberi
 
-### Tek PC'de İki İstemci Testi (DevAuthTool):
-1. `Assets/Mirror/Transports/EpicOnlineTransport/DevAuthTool/Tool~/EOS_DevAuthTool.exe` aracını çalıştırın, portu `7878` yapıp **Start** deyin.
-2. `Player1` ve `Player2` profillerini ekleyin.
-3. Unity Editor'da oyunu başlatıp `Player1` ile **Login (DevAuth)** yapın ve **Host Game (EOS P2P)** butonuna tıklayın. PUID'yi kopyalayın.
-4. `Build/EOSGame.exe` çalıştırıp `Player2` ile **Login (DevAuth)** yapın, kopyalanan PUID'yi yapıştırıp **Connect Client** deyin.
-5. Karakterlerin birbirini gerçek zamanlı gördüğünü, otomat alışverişlerini ve mesafe/başarım sisteminin çalıştığını gözlemleyin.
+### 1. Unity Editor İçi Anlık Doğrulama (Tek Kişilik Host):
+1. Steam girişini tamamlayıp EOS P2P menüsü açıldıktan sonra **Host (P2P)** butonuna tıklayın.
+2. Karakterinizin sahnede doğduğunu (`Host Mode`) gözlemleyin.
+3. `WASD` ile yürüyün: `PlayerDistanceUI` metninin 🔴 Kırmızı başladığını, her 5 metrede bir konsola EOS Stats ingest logunun düştüğünü görün.
+4. `100.0m` mesafeye ulaşıldığında (veya `F7` tuşuna basıldığında) altın kupa bildiriminin yukarıdan yumuşakça kaydığını ve metnin 🟢 Yeşile döndüğünü doğrulayın.
+5. Otomatın yanına gidip `E` tuşuna basın. Tek/Çift ürün satın alımlarını test edin.
+
+### 2. Tek PC'de İki İstemci Testi (Steam Host + Guest Client):
+1. **Host (Unity Editor)**: Steam ile giriş yapın, **Host (P2P)** butonuna tıklayın ve ekranda beliren PUID'yi kopyalayın.
+2. **Build Oluşturma**: Unity'de `File > Build Settings` üzerinden `Build and Run` diyerek oyunu derleyin (`Build/EOSGame.exe`).
+3. **Client (Standalone Build)**: Açılan pencerede **Quick Guest Login (Device ID)** butonuna tıklayın.
+4. Kopyaladığınız Host PUID'sini metin kutusuna yapıştırıp **Connect (P2P)** butonuna tıklayın.
+5. Her iki karakterin aynı dünyada birbirini gördüğünü, hareketlerin senkronize olduğunu ve otomat alışverişlerini doğrulayın.

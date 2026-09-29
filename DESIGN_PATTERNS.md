@@ -92,6 +92,10 @@
   * Host using `EOSNetworkManagerBridge.Instance.StartEosHost()`.
 * **Client Synchronization Guards:**
   * Input processing scripts (like `ClientAuthoritativeMovement`) must verify `isOwned` AND `NetworkClient.ready` before reading inputs or moving.
+* **Steam to EOS Cross-Platform Identity Standards:**
+  * Always use modern asynchronous Steam WebApi session tickets (`SteamUser.GetAuthTicketForWebApi("epiconlineservices")`) paired with `ExternalCredentialType.SteamSessionTicket` (enum value `18`).
+  * Never use legacy Steam Encrypted App Tickets for test App IDs (like `480`), as Valve does not provide private encryption keys.
+  * All native x64 EOS SDK runtime binaries must be v1.15.1 or newer (officially v1.19.2.1) to avoid enum bounds validation rejections in `Connect.Login`.
 
 ---
 

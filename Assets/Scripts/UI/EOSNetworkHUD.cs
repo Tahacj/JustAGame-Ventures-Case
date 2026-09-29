@@ -206,7 +206,28 @@ namespace JustAGame.UI
                     }
                     GUILayout.EndHorizontal();
 
-                    if (GUILayout.Button("Quick Guest Login (Device ID)"))
+                    GUILayout.BeginHorizontal();
+                    if (GUILayout.Button("Login with Steam"))
+                    {
+                        _statusMessage = "Requesting Steam WebApi Auth Ticket...";
+                        JustAGame.Core.Network.SteamAuthManager.LoginToEOSWithSteam((bool success, string error) =>
+                        {
+                            if (!success)
+                            {
+                                _statusMessage = $"<color=red>Steam Auth Error: {error}</color>";
+                            }
+                            else
+                            {
+                                _statusMessage = "Steam Ticket acquired! Connecting to EOS...";
+                            }
+                        });
+                    }
+                    else
+                    {
+                        // Button idle
+                    }
+
+                    if (GUILayout.Button("Quick Guest (Device ID)"))
                     {
                         string cred = string.IsNullOrEmpty(_authProfileName) ? "User" : _authProfileName.Trim();
                         _statusMessage = $"Logging in via Device ID...";
@@ -216,6 +237,7 @@ namespace JustAGame.UI
                     {
                         // Button idle
                     }
+                    GUILayout.EndHorizontal();
                 }
             }
             catch (Exception ex)

@@ -138,6 +138,9 @@ namespace EpicTransport {
         [DllImport("Kernel32.dll")]
         private static extern IntPtr GetProcAddress(IntPtr hModule, string lpProcName);
 
+        [DllImport("Kernel32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        private static extern uint GetModuleFileName(IntPtr hModule, [Out] System.Text.StringBuilder lpFilename, int nSize);
+
         private IntPtr libraryPointer;
 #endif
         
@@ -199,6 +202,19 @@ namespace EpicTransport {
                 throw new Exception("Failed to load library: " + libraryPath);
             }
 
+#if UNITY_EDITOR_WIN
+            System.Text.StringBuilder sb = new System.Text.StringBuilder(1024);
+            GetModuleFileName(libraryPointer, sb, 1024);
+            string actualLoadedPath = sb.ToString();
+            long actualSize = System.IO.File.Exists(actualLoadedPath) ? new System.IO.FileInfo(actualLoadedPath).Length : -1;
+            Debug.Log($"<color=#FFFF00>[EOSSDKComponent] Loaded EOS native library: '{actualLoadedPath}' (Size: {actualSize:N0} bytes, Handle: 0x{libraryPointer.ToInt64():X})</color>");
+            if (actualSize == 23206368) {
+                Debug.LogError("<color=#FF0000>[EOSSDKComponent] CRITICAL: Unity process is still running the old EOS SDK 1.13 DLL cached in memory from before the upgrade! You MUST completely close Unity Editor and restart it for the v1.19 SDK to take effect.</color>");
+            } else if (actualSize == 19548600) {
+                Debug.Log("<color=#55FF55>[EOSSDKComponent] Verified: EOS SDK v1.19.2.1 native DLL is successfully loaded into memory!</color>");
+            }
+#endif
+
             Bindings.Hook(libraryPointer, GetProcAddress);
 #endif
 
@@ -224,9 +240,11 @@ namespace EpicTransport {
             }
 
             // The SDK outputs lots of information that is useful for debugging.
-            // Make sure to set up the logging interface as early as possible: after initializing.
-            LoggingInterface.SetLogLevel(LogCategory.AllCategories, epicLoggerLevel);
+            // Setting to VeryVerbose to capture complete backend HTTP/diagnostic details.
+            LoggingInterface.SetLogLevel(LogCategory.AllCategories, LogLevel.VeryVerbose);
             LoggingInterface.SetCallback(message => Logger.EpicDebugLog(message));
+
+            Debug.Log($"[EOSSDKComponent] Initializing Platform with ProductId: {apiKeys.epicProductId}, SandboxId: {apiKeys.epicSandboxId}, DeploymentId: {apiKeys.epicDeploymentId}, ClientId: {apiKeys.epicClientId}");
 
             var options = new Options() {
                 ProductId = apiKeys.epicProductId,
@@ -336,6 +354,16 @@ namespace EpicTransport {
             Instance.InitializeImplementation();
         }
 
+        public static void LoginWithSteam(string steamTicketHex, string displayName = "SteamUser") {
+            if (Instance.initialized) return;
+            Instance.isConnecting = false;
+            Instance.authInterfaceLogin = false;
+            Instance.connectInterfaceCredentialType = Epic.OnlineServices.ExternalCredentialType.SteamSessionTicket;
+            Instance.connectInterfaceCredentialToken = steamTicketHex;
+            Instance.displayName = displayName;
+            Instance.InitializeImplementation();
+        }
+
         public static void DeleteGuestDeviceId(System.Action<Result> onComplete = null) {
             if (instance != null && instance.EOS != null) {
                 var connect = instance.EOS.GetConnectInterface();
@@ -407,17 +435,19 @@ namespace EpicTransport {
             loginOptions.Credentials.Type = connectInterfaceCredentialType;
             loginOptions.Credentials.Token = connectInterfaceCredentialToken;
 
+            Debug.Log($"<color=#00FFFF>[EOSSDKComponent] Initiating ConnectInterface.Login | Type: {connectInterfaceCredentialType} ({(int)connectInterfaceCredentialType}) | TokenLength: {connectInterfaceCredentialToken?.Length ?? 0} | Sandbox: {apiKeys.epicSandboxId} | Deployment: {apiKeys.epicDeploymentId} | ClientId: {apiKeys.epicClientId}</color>");
+
             EOS.GetConnectInterface().Login(loginOptions, null, OnConnectInterfaceLogin);
         }
 
         private void OnConnectInterfaceLogin(Epic.OnlineServices.Connect.LoginCallbackInfo loginCallbackInfo) {
             if (loginCallbackInfo.ResultCode == Result.Success) {
-                Debug.Log("[EOSSDKComponent] Connect Interface Login succeeded");
+                Debug.Log("<color=#55FF55>[EOSSDKComponent] Connect Interface Login succeeded!</color>");
 
                 string productIdString;
                 Result result = loginCallbackInfo.LocalUserId.ToString(out productIdString);
                 if (Result.Success == result) {
-                    Debug.Log("[EOSSDKComponent] EOS User Product ID: " + productIdString);
+                    Debug.Log("<color=#55FF55>[EOSSDKComponent] EOS User Product ID: " + productIdString + "</color>");
 
                     localUserProductIdString = productIdString;
                     localUserProductId = loginCallbackInfo.LocalUserId;
@@ -442,7 +472,7 @@ namespace EpicTransport {
                     ConnectInterfaceLogin();
                 });
             } else {
-                Debug.LogError("[EOSSDKComponent] Connect Interface Login failed: " + loginCallbackInfo.ResultCode);
+                Debug.LogError($"<color=#FF5555>[EOSSDKComponent] Connect Interface Login failed: {loginCallbackInfo.ResultCode} (Code: {(int)loginCallbackInfo.ResultCode}). Check the [EOS SDK] logs above for server diagnostic message.</color>");
                 isConnecting = false;
                 OnLoginFailed?.Invoke(loginCallbackInfo.ResultCode);
             }

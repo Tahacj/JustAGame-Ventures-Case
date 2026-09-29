@@ -169,6 +169,26 @@ namespace Epic.OnlineServices
 		/// 
 		/// Supported with <see cref="Connect.ConnectInterface.Login" />.
 		/// </summary>
-		ItchioKey = 15
+		ItchioKey = 15,
+		/// <summary>
+		/// Epic Games ID Token
+		/// 
+		/// Acquired using EOS_Auth_CopyIdToken that returns EOS_Auth_IdToken::JsonWebToken.
+		/// 
+		/// Supported with <see cref="Connect.ConnectInterface.Login" />.
+		/// </summary>
+		EpicIdToken = 16,
+		/// <summary>
+		/// Amazon Access Token
+		/// 
+		/// Supported with <see cref="Connect.ConnectInterface.Login" />.
+		/// </summary>
+		AmazonAccessToken = 17,
+		/// <summary>
+		/// Steam Auth Session Ticket generated using the ISteamUser::GetAuthTicketForWebApi API of Steamworks SDK.
+		/// 
+		/// Supported with <see cref="Connect.ConnectInterface.Login" />. Available in SDK 1.15.1 onward.
+		/// </summary>
+		SteamSessionTicket = 18
 	}
 }

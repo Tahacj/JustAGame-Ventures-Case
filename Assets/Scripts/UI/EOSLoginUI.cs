@@ -38,6 +38,9 @@ namespace JustAGame.UI
         [Tooltip("Button for 1-click Guest / Machine Device ID login.")]
         [SerializeField] private Button deviceIdLoginButton;
 
+        [Tooltip("Button to log in via local Steam client (Steamworks WebApi Session Ticket).")]
+        [SerializeField] private Button steamLoginButton;
+
         [Header("Configuration")]
         [SerializeField] private uint devAuthPort = 7878;
         [SerializeField] private string defaultAccountName = "Player1";
@@ -97,6 +100,15 @@ namespace JustAGame.UI
                     // Device ID button not assigned
                 }
 
+                if (steamLoginButton.IsNotNull())
+                {
+                    steamLoginButton.onClick.AddListener(HandleSteamLogin);
+                }
+                else
+                {
+                    // Steam button not assigned
+                }
+
                 EOSSDKComponent.OnLoginFailed += HandleLoginFailed;
                 EOSSDKComponent.OnLoginSuccess += HandleLoginSuccess;
             }
@@ -134,6 +146,15 @@ namespace JustAGame.UI
                 if (deviceIdLoginButton.IsNotNull())
                 {
                     deviceIdLoginButton.onClick.RemoveListener(HandleDeviceIdLogin);
+                }
+                else
+                {
+                    // Button unbind idle
+                }
+
+                if (steamLoginButton.IsNotNull())
+                {
+                    steamLoginButton.onClick.RemoveListener(HandleSteamLogin);
                 }
                 else
                 {
@@ -299,6 +320,37 @@ namespace JustAGame.UI
             }
         }
 
+        public void HandleSteamLogin()
+        {
+            try
+            {
+                UpdateStatus("Connecting to Steam client & requesting WebApi ticket...");
+                SetButtonsInteractable(false);
+                StartLoginTimeout();
+
+                JustAGame.Core.Network.SteamAuthManager.LoginToEOSWithSteam((bool success, string error) =>
+                {
+                    if (!success)
+                    {
+                        StopLoginTimeout();
+                        UpdateStatus($"<color=red>Steam Error: {error}</color>");
+                        SetButtonsInteractable(true);
+                    }
+                    else
+                    {
+                        UpdateStatus("Steam Ticket received! Authenticating with EOS backend...");
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[EOSLoginUI] Exception in HandleSteamLogin: {ex.Message}");
+                StopLoginTimeout();
+                UpdateStatus($"<color=red>Login Error: {ex.Message}</color>");
+                SetButtonsInteractable(true);
+            }
+        }
+
         private void UpdateStatus(string message)
         {
             try
@@ -375,6 +427,9 @@ namespace JustAGame.UI
 
                 if (deviceIdLoginButton.IsNotNull()) deviceIdLoginButton.interactable = interactable;
                 else { }
+
+                if (steamLoginButton.IsNotNull()) steamLoginButton.interactable = interactable;
+                else { }
             }
             catch (Exception ex)
             {
@@ -425,6 +480,23 @@ namespace JustAGame.UI
                 else
                 {
                     // Status TMP already assigned
+                }
+
+                if (steamLoginButton.IsNull())
+                {
+                    Button[] buttons = GetComponentsInChildren<Button>(true);
+                    for (int i = 0; i < buttons.Length; i++)
+                    {
+                        if (buttons[i].name.IndexOf("Steam", StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            steamLoginButton = buttons[i];
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    // Steam button assigned
                 }
             }
             catch (Exception ex)

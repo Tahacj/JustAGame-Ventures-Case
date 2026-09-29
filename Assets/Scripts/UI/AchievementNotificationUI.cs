@@ -302,10 +302,17 @@ namespace JustAGame.UI
             try
             {
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
+#if ENABLE_INPUT_SYSTEM
+                if (UnityEngine.InputSystem.Keyboard.current != null && UnityEngine.InputSystem.Keyboard.current.f7Key.wasPressedThisFrame)
+                {
+                    TestShowAchievement();
+                }
+#else
                 if (Input.GetKeyDown(KeyCode.F7))
                 {
                     TestShowAchievement();
                 }
+#endif
 #endif
             }
             catch (Exception ex)

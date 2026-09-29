@@ -37,17 +37,22 @@ JustAGame Ventures Case/
 │   │           ├── Common.cs                          <-- [MODIFIED] Fast-path single packet, GC allocation pool
 │   │           ├── EosTransport.cs                    <-- [MODIFIED] Dynamic socket name isolation, ConnectionFilter
 │   │           ├── Client.cs                          <-- Client socket communication
-│   │           ├── EOSSDKComponent.cs                 <-- [EXPANDED] Multi-auth (Guest, DevAuth, EAS), device wipe, logger 400
+│   │           ├── EOSSDKComponent.cs                 <-- [EXPANDED] Multi-auth (Steam, Guest, DevAuth, EAS), DLL inspection, logger 400
+│   │           ├── EOSSDK/
+│   │           │   ├── EOSSDK-Win64-Shipping.dll      <-- [UPGRADED] Official EOS SDK v1.19.2.1 native x64 DLL (19,548,600 bytes)
+│   │           │   └── Generated/
+│   │           │       └── ExternalCredentialType.cs  <-- [EXPANDED] Added SteamSessionTicket = 18 for WebApi ticket validation
 │   │           └── DevAuthTool/                       <-- Epic Developer Authentication Tool package
 │   │               └── Tool~/EOS_DevAuthTool.exe      <-- Local credential server for dual-instance testing
 │   └── Scripts/
 │       ├── Core/
 │       │   └── Network/
+│       │       ├── SteamAuthManager.cs                <-- [NEW] Steamworks lifecycle, WebApi session ticket retrieval, EOS bridge
 │       │       ├── EOSNetworkManagerBridge.cs         <-- EOS lifecycle coordinator, P2P host/client starter
 │       │       ├── EOSNetworkAuthenticator.cs         <-- Anti-spoofing physical address authenticator
 │       │       └── EOSPlayerStatsTracker.cs           <-- [NEW] Movement ingestion, EOS Stats & Achievements, 5m batching, PlayerPrefs cache
 │       ├── UI/
-│       │   ├── EOSLoginUI.cs                          <-- [NEW] TMP login modal with Guest, DevAuth & Epic Account buttons + 14s guard
+│       │   ├── EOSLoginUI.cs                          <-- [NEW] TMP login modal with Steam, Guest, DevAuth & Epic Account buttons + 14s guard
 │       │   ├── EOSNetworkHUD.cs                       <-- [EXPANDED] In-game GUI for PUID display, copy/paste, host/connect, auth switcher
 │       │   ├── PlayerDistanceUI.cs                    <-- [NEW] Dynamic 3-state TMP walking distance indicator (Red / Yellow / Green)
 │       │   ├── AchievementNotificationUI.cs           <-- [NEW] Sliding in-game achievement toast with dedicated sorting 999 canvas
@@ -148,15 +153,17 @@ JustAGame Ventures Case/
 
 ## 4. Authentication Architecture & Multi-Identity Management
 
-The authentication layer was redesigned to support frictionless single-PC testing, multiple account types, and fail-safe UI transitions.
+The authentication layer was redesigned to support frictionless single-PC testing, multiple account types, native Steam integration, and fail-safe UI transitions.
 
 ```mermaid
 graph TD
-    UI[EOSLoginUI] -->|Option 1: Quick Play| Guest[Connect.CreateDeviceId / DeviceidAccessToken]
-    UI -->|Option 2: Single-PC Multi-Client| DevAuth[DevAuthTool on 127.0.0.1:7878]
-    UI -->|Option 3: Live Account| EAS[AuthInterface: AccountPortal / OAuth Web]
+    UI[EOSLoginUI] -->|Option 1: Steam Account| Steam[SteamAuthManager: WebApi Session Ticket]
+    UI -->|Option 2: Quick Play| Guest[Connect.CreateDeviceId / DeviceidAccessToken]
+    UI -->|Option 3: Single-PC Multi-Client| DevAuth[DevAuthTool on 127.0.0.1:7878]
+    UI -->|Option 4: Live Epic Account| EAS[AuthInterface: AccountPortal / OAuth Web]
     
-    Guest --> ConnectInterface[EOS Connect Interface]
+    Steam --> ConnectInterface[EOS Connect Interface]
+    Guest --> ConnectInterface
     DevAuth --> ConnectInterface
     EAS --> ConnectInterface
     
@@ -165,27 +172,77 @@ graph TD
 ```
 
 ### 4.1 Authentication Providers Implemented
-1. **Device ID (Guest Authentication)**:
+1. **Steam Identity Provider (Steam WebApi Session Ticket)**:
+   * Uses [SteamAuthManager.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Scripts/Core/Network/SteamAuthManager.cs) to acquire modern WebApi tickets (`ISteamUser::GetAuthTicketForWebApi("epiconlineservices")`).
+   * Passes the hex-encoded session ticket to `Connect.Login` with `ExternalCredentialType.SteamSessionTicket` (enum value `18`).
+   * **Behavior**: Zero-friction 1-click login for Steam players. Epic verifies the ticket directly against Steam's servers without requiring proprietary developer encryption keys, linking the player's 64-bit SteamID to an EOS Product User ID (PUID).
+2. **Device ID (Guest Authentication)**:
    * Uses `Connect.CreateDeviceId` and `Connect.Login(CredentialsType.DeviceidAccessToken)`.
    * **Behavior**: Zero-click authentication. Links the game session to the Windows machine profile without requiring any Epic Games account or external login prompt.
    * **Persistence**: The token is stored in the Windows registry/keychain. To reset it to a brand new guest user, use `EOS Tools > Reset Guest Device ID`.
-2. **Developer Authentication Tool (DevAuthTool)**:
+3. **Developer Authentication Tool (DevAuthTool)**:
    * Configured via [EOSSDKComponent.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Mirror/Transports/EpicOnlineTransport/EOSSDKComponent.cs) using explicit IPv4 loopback (`127.0.0.1:7878`).
    * Solves the single-PC multi-instance problem: DevAuthTool can host multiple distinct named credentials (e.g. `Player1`, `Player2`).
    * When Unity Editor logs in as `Player1` and a standalone build logs in as `Player2`, EOS assigns them **two unique Product User IDs**, allowing full P2P host-client connection on one computer.
-3. **Epic Account Services (EAS / Account Portal)**:
+4. **Epic Account Services (EAS / Account Portal)**:
    * Uses `AuthInterface.Login` with `LoginCredentialType.AccountPortal`.
    * Opens the system browser and authenticates against the player's real Epic Games Account.
    * Exchange token is passed to `Connect.Login` using `ExternalCredentialType.Epic`.
 
 ### 4.2 Single-PC Multi-Instance Scoping Rules
-* **Device ID Scope**: Device ID is hardware/OS-scoped. If you launch two game instances under the same Windows user account, both instances will share the *same* Device ID and PUID. Because an EOS peer cannot establish a P2P socket with itself, dual-instance testing on one PC must use **DevAuthTool** or two separate Windows user accounts ("Run as different user").
+* **Device ID Scope**: Device ID is hardware/OS-scoped. If you launch two game instances under the same Windows user account, both instances will share the *same* Device ID and PUID. Because an EOS peer cannot establish a P2P socket with itself, dual-instance testing on one PC must use **DevAuthTool**, a **Steam Host + Guest Client** combination, or two separate Windows user accounts ("Run as different user").
 
 ### 4.3 14-Second Timeout Watchdog
 In [EOSLoginUI.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Scripts/UI/EOSLoginUI.cs), if an external authentication request (such as a browser popup or unreachable DevAuthTool) takes longer than 14 seconds:
 * The watchdog coroutine automatically aborts the pending state.
 * Displays a clear error message in `statusTMP`.
 * Re-enables all buttons, preventing the UI from becoming permanently locked in a frozen state.
+
+### 4.4 Steam-to-EOS Connect Interface Architecture & Ticket Ingestion Pipeline
+```
+[Steamworks SDK] -> SteamUser.GetAuthTicketForWebApi("epiconlineservices")
+       │
+       ▼ (Asynchronous Callback: GetTicketForWebApiResponse_t)
+[SteamAuthManager] -> Converts 234-byte raw ticket buffer into Hex string (468 chars)
+       │
+       ▼
+[EOSSDKComponent] -> Sets Credentials.Type = ExternalCredentialType.SteamSessionTicket (18)
+       │          -> Sets Credentials.Token = hexString
+       ▼
+[EOS Connect Interface] -> Sends token to Epic Backend (Sandbox: 'Live')
+       │
+       ▼
+[Epic Backend] -> Calls Valve ISteamUserAuth/AuthenticateUserTicket via WebApi
+       │
+       ▼ (Returns SteamID: 76561199113152108)
+[EOS Connect Interface] -> Generates / Retrieves unique ProductUserId (PUID)
+       │
+       ▼
+[EOSLoginUI / NetworkHUD] -> Unlocks Lobby / P2P Host / Client GUI
+```
+
+### 4.5 Reverse-Engineering Root Cause & Native SDK v1.19.2.1 Upgrade
+During development, initial attempts to use `SteamSessionTicket` in Unity failed with error `InvalidParameters` (Error 10) accompanied by the native log:
+```
+[LogEOS] [AntiCheatClient] Invalid parameter EOS_Connect_Credentials.Type reason: invalid setting
+```
+Reverse engineering the native binaries revealed why:
+1. **The Disassembly Comparison**:
+   * In the legacy `EOSSDK-Win64-Shipping.dll` bundled with the transport (v1.13):
+     ```assembly
+     cmp ecx, 0Fh    ; 0Fh = 15 (ExternalCredentialType.ItchioKey)
+     ja  loc_invalid_setting  ; Jumps directly to Result::InvalidParameters (10)
+     ```
+     Because `SteamSessionTicket` has enum value `18`, any call using enum 18 was strictly rejected by the native v1.13 credential validator!
+   * In the upgraded official `EOSSDK-Win64-Shipping.dll` (v1.19.2.1):
+     ```assembly
+     cmp r9d, 13h    ; 13h = 19
+     ja  loc_invalid_setting
+     ```
+     v1.19 natively accepts `SteamSessionTicket = 18`.
+2. **Windows Module Cache Resolution**:
+   * Because Unity loads native DLLs via Win32 `LoadLibrary` at runtime, replacing the `.dll` file on disk while the Unity Editor is open does **not** unload the old module from process memory. Subsequent calls to `LoadLibrary` return the cached in-memory handle.
+   * We added native module path and byte-size verification in [EOSSDKComponent.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Mirror/Transports/EpicOnlineTransport/EOSSDKComponent.cs#L205-L216) via `GetModuleFileName`. A clean restart of the Unity Editor successfully bound the official v1.19.2.1 binary (`19,548,600` bytes).
 
 ---
 
@@ -360,61 +417,111 @@ To reset stats on Epic's backend servers:
 
 ## 9. Step-by-Step Testing & Verification Workflows
 
-### Option 1: Testing on a Single PC (Dual Instance with DevAuthTool)
+### 9.1 Immediate Verification: Single-Player Host in Unity Editor
+Since you are currently authenticated via Steam in the Unity Editor and the EOS Network HUD is open, follow these steps to verify gameplay, distance stats, vending machine, and achievement systems:
 
-Epic Online Services requires two distinct authenticated Epic accounts to establish a P2P connection (an account cannot connect to itself).
-
-#### Step 1: Run DevAuthTool
-1. Run the local authentication server:
-   ```
-   Assets/Mirror/Transports/EpicOnlineTransport/DevAuthTool/Tool~/EOS_DevAuthTool.exe
-   ```
-2. Enter port `7878` and click **Start**.
-3. Click **Add User**:
-   * Log into Epic Account #1. Save credential name as: `Player1`.
-4. Click **Add User** again:
-   * Log into Epic Account #2. Save credential name as: `Player2`.
-
-#### Step 2: Run Host in Unity Editor
-1. In Unity, press **Play**.
-2. On the `EOSLoginUI` panel:
-   * Profile Name: `Player1`
-   * Click **Login (DevAuth)**.
-3. Wait for `● EOS Status: Ready` in `EOSNetworkHUD`.
-4. Click **Host Game (EOS P2P)**.
-5. Click **Copy My EOS ID to Clipboard**.
-
-#### Step 3: Run Client in Standalone Build
-1. In Unity: **File > Build Settings** -> Build executable to `Build/EOSGame.exe`.
-2. Launch `EOSGame.exe`.
-3. On the `EOSLoginUI` panel:
-   * Profile Name: `Player2`
-   * Click **Login (DevAuth)**.
-4. On `EOSNetworkHUD`, click **Paste ID** (or Ctrl+V).
-5. Click **Connect Client**.
+1. **Start the P2P Host**:
+   * On the `EOSNetworkHUD` GUI in the top-left corner, click **Host (P2P)**.
+   * Observe the Unity Console: Mirror transitions to `Host Mode`, and your player character spawns at the spawn point.
+2. **Verify Player Movement & Authoritative Distance Tracking**:
+   * Use **`W, A, S, D`** to walk around.
+   * Check the `PlayerDistanceUI` at the top of the screen:
+     * It will display `Distance: X.Xm / 100m (X%)` in 🔴 **Red**.
+     * Every 5 meters walked, check the Console: `[EOSPlayerStatsTracker] Ingesting distance metric: +5m (Total: X.Xm)` confirms metrics are being batched to the EOS cloud.
+3. **Verify Milestone & Sliding Golden Achievement Toast**:
+   * Walk until you reach **`100.0m`** (or press **`F7`** to preview the animation immediately).
+   * Notice the distance text dynamically change to 🟡 **Yellow** (`Syncing with EOS...`), and once confirmed by the Epic backend, turn 🟢 **Green** (`[100m Unlocked & Synced]`).
+   * The custom [AchievementNotificationUI](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Scripts/UI/AchievementNotificationUI.cs) overlay banner will smoothly slide down from the top of the screen displaying the gold trophy and *"Century Walker - Walked 100 meters across the realm!"*, remain visible for 4 seconds, and slide back up.
+4. **Verify Server-Authoritative Vending Machine**:
+   * Walk up to the Vending Machine and press **`E`**.
+   * Purchase **Item 1** or **Item 3** (Odd): verify item is added to your local inventory.
+   * Purchase **Item 2** or **Item 4** (Even): verify item is routed to the Host inventory.
+   * Attempt to purchase an item without sufficient gold or outside the interaction radius: verify the transaction is rejected on the server.
 
 ---
 
-### Option 2: Quick Guest Testing (Device ID)
-1. In Unity Editor, press **Play**.
-2. Click **Quick Guest Login (Device ID)**.
-3. You will immediately be authenticated with a persistent hardware PUID without entering any credentials.
-4. Walk with `WASD`:
-   * Observe `PlayerDistanceUI` counting meters in 🔴 **Red**.
-   * At `100.0m`, observe the text switch to 🟡 **Yellow**, then 🟢 **Green**, accompanied by the gold sliding achievement banner.
+### 9.2 Option 1: Steam Host + Quick Guest Client (Single PC Dual-Client Test)
+Because Steam provides a unique 64-bit SteamID linked to an EOS PUID, and Guest authentication generates a unique Windows hardware PUID, you can test multiplayer P2P on a single PC without needing two Steam accounts!
+
+#### Step 1: Run Host in Unity Editor (Steam)
+1. In the Unity Editor, click **Steam Login** on `EOSLoginUI`.
+2. Once the P2P menu opens, click **Host (P2P)**.
+3. Click **Copy My EOS ID to Clipboard** (or copy the 32-character PUID shown in the HUD).
+
+#### Step 2: Build & Run Client Executable
+1. Open **File > Build Settings** in Unity (ensure the current scene is checked).
+2. Click **Build and Run** (output to `Build/EOSGame.exe`).
+3. In the standalone game window, click **Quick Guest Login (Device ID)** on `EOSLoginUI`.
+4. Once the P2P menu appears, paste the Editor Host's PUID into the input field (Ctrl+V).
+5. Click **Connect (P2P)**.
+
+#### Step 3: Verify Multiplayer Synchronization
+* Both characters will spawn in the same world via EOS P2P NAT punchthrough / relay.
+* Walk around with both characters: verify real-time position interpolation and animation.
+* As the Guest client, open the Vending Machine (`E`) and buy an **Even Item** (Item 2 or 4). Check the Unity Editor host: the item will be routed and delivered to the Host's inventory!
+* As the Guest client, buy an **Odd Item** (Item 1 or 3): the item will stay in the Guest client's inventory.
+
+---
+
+### 9.3 Option 2: DevAuthTool (Two Epic Accounts)
+If testing with distinct Epic Games developer credentials:
+1. Run `Assets/Mirror/Transports/EpicOnlineTransport/DevAuthTool/Tool~/EOS_DevAuthTool.exe` on port `7878`.
+2. Add `Player1` and `Player2`.
+3. In Unity Editor: Login as `Player1` -> Click **Host (P2P)** -> Copy PUID.
+4. In Standalone Build: Login as `Player2` -> Paste PUID -> Click **Connect (P2P)**.
 
 ---
 
 ## 10. Developer Portal Configuration Matrix & Troubleshooting Guide
 
-### 10.1 Client Policy Requirement: `GameClient` vs `Peer2Peer`
+### 10.1 The Steam Provider Configuration & "App Ticket" vs "Session Ticket" Trap
+* **Symptom**: `Connect.Login` fails with `ConnectExternalServiceConfigurationFailure` (Error 7007 / Numeric 110011).
+* **Root Cause**:
+  * Passing `ExternalCredentialType.SteamAppTicket` (enum value `1`) instructs Epic's backend to decrypt the ticket using a pre-shared Steam Encryption Key.
+  * For development testing under Valve's Spacewar App ID (`480`), Valve **does not** provide private encryption keys. Attempting to use App Tickets without a key causes Epic's backend to fail validation with error 110011.
+* **Resolution**:
+  1. In [SteamAuthManager.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Scripts/Core/Network/SteamAuthManager.cs), switch from `RequestEncryptedAppTicket` to `SteamUser.GetAuthTicketForWebApi("epiconlineservices")`.
+  2. In the Epic Developer Portal (**Product Settings > Identity Providers > Steam**):
+     * Leave the **Encryption Key** field blank / empty.
+     * Set **Steam App ID** to `480`.
+     * In **Environments / Sandboxes**, link the Steam Identity Provider to your active Sandbox (`Live`).
+  3. In [EOSSDKComponent.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Mirror/Transports/EpicOnlineTransport/EOSSDKComponent.cs), set `Credentials.Type = ExternalCredentialType.SteamSessionTicket` (enum value `18`). Epic's backend directly contacts Valve's `ISteamUserAuth/AuthenticateUserTicket` API using the session ticket.
+
+---
+
+### 10.2 Native EOS SDK DLL Version Bounds (`cmp ecx, 15` vs `cmp r9d, 19`)
+* **Symptom**: `Connect.Login` fails with `InvalidParameters` (Error 10) and native log `[LogEOS] Invalid parameter EOS_Connect_Credentials.Type reason: invalid setting`.
+* **Root Cause**:
+  * The older `EOSSDK-Win64-Shipping.dll` bundled in third-party Mirror transports was built against EOS SDK v1.13.
+  * In EOS SDK v1.13, the maximum supported credential type was `ExternalCredentialType.ItchioKey` (enum value `15`). Reverse engineering the binary showed the validation instruction was `cmp ecx, 0Fh` (15). Any credential type `> 15` was rejected as an invalid parameter before sending network requests.
+  * `SteamSessionTicket` (`18`) was introduced in EOS SDK v1.15.1+.
+* **Resolution**:
+  * Upgraded the native Windows x64 binary [EOSSDK-Win64-Shipping.dll](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Mirror/Transports/EpicOnlineTransport/EOSSDK/EOSSDK-Win64-Shipping.dll) to the official Epic Online Services SDK v1.19.2.1 (`19,548,600` bytes).
+  * In v1.19.2.1, the validation instruction is `cmp r9d, 13h` (19), which fully validates `SteamSessionTicket = 18`.
+
+---
+
+### 10.3 Windows In-Memory DLL Handle Caching in Unity Editor Process
+* **Symptom**: Replacing `EOSSDK-Win64-Shipping.dll` on disk while Unity Editor is open does not fix Error 10; the old validation error persists.
+* **Root Cause**:
+  * When Unity Editor enters Play Mode, [EOSSDKComponent.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Mirror/Transports/EpicOnlineTransport/EOSSDKComponent.cs) calls Win32 `LoadLibrary("EOSSDK-Win64-Shipping.dll")`.
+  * Windows maps the binary into the `Unity.exe` process address space. Replacing the file on disk does not invalidate Windows' memory-mapped PE header. Subsequent `LoadLibrary` calls return the previously cached module handle.
+* **Resolution**:
+  * Implemented runtime DLL module inspection in [EOSSDKComponent.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Mirror/Transports/EpicOnlineTransport/EOSSDKComponent.cs#L205-L216) via Win32 `GetModuleFileName` to log the exact module path, file size, and loaded version.
+  * Fully terminating and restarting `Unity.exe` clears the process memory space and binds the upgraded v1.19.2.1 library.
+
+---
+
+### 10.4 Client Policy Requirement: `GameClient` vs `Peer2Peer`
 * **Symptom**: `Auth.Login` or `Connect.Login` fails with `InvalidRequest` or `Forbidden`.
 * **Root Cause**: If the Client Policy assigned to your Client ID in the Developer Portal is configured with the `Peer2Peer` template, it only permits raw P2P NAT punchthrough and forbids user account authentication.
 * **Resolution**: In Developer Portal > **Product Settings > Clients & Permissions**:
   1. Set the Client Policy to **GameClient** (or ensure `AuthInterface`, `ConnectInterface`, and `Achievements` are explicitly checked).
   2. Click **Save & Deploy**.
 
-### 10.2 Epic Account Services (EAS) Scope Configuration
+---
+
+### 10.5 Epic Account Services (EAS) Scope Configuration
 * **Symptom**: Web browser opens for Epic Account login, but displays an error saying *“The application requires scopes that have not been configured”*.
 * **Root Cause**: The EAS Application linked to your client has not declared permissions.
 * **Resolution**: In Developer Portal > **Epic Account Services**:
@@ -423,18 +530,24 @@ Epic Online Services requires two distinct authenticated Epic accounts to establ
   3. Under **Linked Clients**, ensure your Client ID is selected.
   4. Save changes.
 
-### 10.3 DevAuthTool Stale Tokens (`UnexpectedError`)
+---
+
+### 10.6 DevAuthTool Stale Tokens (`UnexpectedError`)
 * **Symptom**: DevAuthTool shows user as used "16 seconds ago", but Unity logs `LoginCallback: UnexpectedError`.
 * **Root Cause**: If permissions or client credentials were modified in the portal while DevAuthTool was running, DevAuthTool retains stale OAuth refresh tokens in its local cache.
 * **Resolution**:
   1. In `EOS_DevAuthTool.exe`, click the trash icon next to the user.
   2. Click **Add User** and sign in again to generate a fresh token.
 
-### 10.4 IPv4 Loopback Addressing
+---
+
+### 10.7 IPv4 Loopback Addressing
 * **Issue**: On Windows 11, `localhost` may resolve to IPv6 `::1`, which DevAuthTool does not bind by default.
 * **Resolution**: [EOSSDKComponent.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Mirror/Transports/EpicOnlineTransport/EOSSDKComponent.cs) explicitly connects to `127.0.0.1`, guaranteeing strict IPv4 communication.
 
-### 10.5 TextMeshPro Missing Glyph Warning (Emoji Sanitization)
+---
+
+### 10.8 TextMeshPro Missing Glyph Warning (Emoji Sanitization)
 * **Issue**: Unity logs `Missing glyph for character: 🏆` when rendering formatted strings in standard LiberationSans SDF font assets.
 * **Resolution**: [PlayerDistanceUI.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Scripts/UI/PlayerDistanceUI.cs) and [AchievementNotificationUI.cs](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/Assets/Scripts/UI/AchievementNotificationUI.cs) sanitize all serialized string formats, replacing unicode emojis with rich tags (`[UNLOCKED]`) and rendering icons via genuine UI Image sprites.
 
@@ -443,6 +556,7 @@ Epic Online Services requires two distinct authenticated Epic accounts to establ
 ## 11. Where to See Live Data & Diagnostics
 
 1. **Unity Editor Console**:
+   * `[EOSSDKComponent] Loaded EOS native library: '...' (Size: 19,548,600 bytes) -> Verified v1.19.2.1`
    * `[EOSSDKComponent] Logged in as: <32-char PUID>`
    * `[EOSPlayerStatsTracker] Ingesting distance metric: +5m (Total: 45.0m)`
    * `[EOSPlayerStatsTracker] Achievement WALK_100M unlocked on EOS backend!`
@@ -455,3 +569,4 @@ Epic Online Services requires two distinct authenticated Epic accounts to establ
 3. **Epic Games Developer Portal**:
    * **Game Services > Player Search**: Look up any PUID to view real-time authentication timestamps, linked accounts, and unlocked achievements.
    * **Game Services > Metrics**: View real-time Concurrent Users (CCU) and session counts.
+
