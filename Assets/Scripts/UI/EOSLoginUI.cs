@@ -361,7 +361,9 @@ namespace JustAGame.UI
                 }
                 else
                 {
+#if UNITY_EDITOR
                     Debug.Log($"[EOSLoginUI] Status: {message}");
+#endif
                 }
             }
             catch (Exception ex)
@@ -484,13 +486,17 @@ namespace JustAGame.UI
 
                 if (steamLoginButton.IsNull())
                 {
-                    Button[] buttons = GetComponentsInChildren<Button>(true);
+                    Button[] buttons = this.GetComponentsInChildrenOrEmpty<Button>(true);
                     for (int i = 0; i < buttons.Length; i++)
                     {
-                        if (buttons[i].name.IndexOf("Steam", StringComparison.OrdinalIgnoreCase) >= 0)
+                        if (buttons[i].IsNotNull() && buttons[i].name.IndexOf("Steam", StringComparison.OrdinalIgnoreCase) >= 0)
                         {
                             steamLoginButton = buttons[i];
                             break;
+                        }
+                        else
+                        {
+                            // Non-steam button or null element
                         }
                     }
                 }

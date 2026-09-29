@@ -16,6 +16,12 @@ namespace JustAGame.Core.Network
         public static PlayerInventory HostInventory { get; private set; }
         public static event Action<PlayerInventory> OnHostInventoryAssigned;
 
+        // Platform lifecycle events for clients and servers
+        public static event Action OnClientConnectedToServer;
+        public static event Action OnClientDisconnectedFromServer;
+        public static event Action<TransportError, string> OnClientTransportError;
+        public static event Action<NetworkConnectionToClient, TransportError, string> OnServerTransportError;
+
         public override Transform GetStartPosition()
         {
             try
@@ -118,6 +124,58 @@ namespace JustAGame.Core.Network
             {
                 Debug.LogError($"[GameNetworkManager] Exception in OnStopServer: {ex.Message}");
                 base.OnStopServer();
+            }
+        }
+
+        public override void OnClientConnect()
+        {
+            try
+            {
+                base.OnClientConnect();
+                OnClientConnectedToServer?.Invoke();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[GameNetworkManager] Exception in OnClientConnect: {ex.Message}");
+            }
+        }
+
+        public override void OnClientDisconnect()
+        {
+            try
+            {
+                base.OnClientDisconnect();
+                OnClientDisconnectedFromServer?.Invoke();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[GameNetworkManager] Exception in OnClientDisconnect: {ex.Message}");
+            }
+        }
+
+        public override void OnClientError(TransportError error, string reason)
+        {
+            try
+            {
+                base.OnClientError(error, reason);
+                OnClientTransportError?.Invoke(error, reason);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[GameNetworkManager] Exception in OnClientError: {ex.Message}");
+            }
+        }
+
+        public override void OnServerError(NetworkConnectionToClient conn, TransportError error, string reason)
+        {
+            try
+            {
+                base.OnServerError(conn, error, reason);
+                OnServerTransportError?.Invoke(conn, error, reason);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[GameNetworkManager] Exception in OnServerError: {ex.Message}");
             }
         }
 

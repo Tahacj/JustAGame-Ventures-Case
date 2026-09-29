@@ -1,4 +1,5 @@
 using System;
+using JustAGame;
 
 namespace JustAGame.Inventory
 {
@@ -29,7 +30,7 @@ namespace JustAGame.Inventory
         {
             unchecked
             {
-                return (id * 397) ^ (uniqueIdentifier != null ? StringComparer.Ordinal.GetHashCode(uniqueIdentifier) : 0);
+                return (id * 397) ^ (uniqueIdentifier.IsNotNull() ? StringComparer.Ordinal.GetHashCode(uniqueIdentifier) : 0);
             }
         }
 

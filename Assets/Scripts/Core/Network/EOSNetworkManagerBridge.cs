@@ -109,6 +109,7 @@ namespace JustAGame.Core.Network
                 if (Instance.IsNull())
                 {
                     Instance = this;
+                    DontDestroyOnLoad(gameObject);
                 }
                 else
                 {
@@ -128,6 +129,58 @@ namespace JustAGame.Core.Network
             catch (Exception ex)
             {
                 Debug.LogError($"[EOSNetworkManagerBridge] Exception in Awake: {ex.Message}");
+            }
+        }
+
+        private void OnEnable()
+        {
+            try
+            {
+                GameNetworkManager.OnClientDisconnectedFromServer += HandleClientDisconnectedFromServer;
+                GameNetworkManager.OnClientTransportError += HandleClientTransportError;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[EOSNetworkManagerBridge] Exception in OnEnable: {ex.Message}");
+            }
+        }
+
+        private void OnDisable()
+        {
+            try
+            {
+                GameNetworkManager.OnClientDisconnectedFromServer -= HandleClientDisconnectedFromServer;
+                GameNetworkManager.OnClientTransportError -= HandleClientTransportError;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[EOSNetworkManagerBridge] Exception in OnDisable: {ex.Message}");
+            }
+        }
+
+        private void HandleClientDisconnectedFromServer()
+        {
+            try
+            {
+                OnEosSessionStopped?.Invoke();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[EOSNetworkManagerBridge] Exception in HandleClientDisconnectedFromServer: {ex.Message}");
+            }
+        }
+
+        private void HandleClientTransportError(TransportError error, string reason)
+        {
+            try
+            {
+                string msg = $"Transport error: {error} ({reason})";
+                Debug.LogError($"[EOSNetworkManagerBridge] {msg}");
+                OnEosError?.Invoke(msg);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[EOSNetworkManagerBridge] Exception in HandleClientTransportError: {ex.Message}");
             }
         }
 
@@ -325,7 +378,9 @@ namespace JustAGame.Core.Network
                             networkManager.networkAddress = localProductId;
                             networkManager.StartHost();
 
+#if UNITY_EDITOR
                             Debug.Log($"[EOSNetworkManagerBridge] EOS Host started successfully! Local Product ID: {localProductId}");
+#endif
                             OnEosHostStarted?.Invoke(localProductId);
                             return true;
                         }
@@ -398,7 +453,9 @@ namespace JustAGame.Core.Network
                                     networkManager.networkAddress = trimmedHostId;
                                     networkManager.StartClient();
 
+#if UNITY_EDITOR
                                     Debug.Log($"[EOSNetworkManagerBridge] Connecting to EOS Host: {trimmedHostId}...");
+#endif
                                     OnEosClientStarted?.Invoke(trimmedHostId);
                                     return true;
                                 }
@@ -448,7 +505,9 @@ namespace JustAGame.Core.Network
                         // No active server or client session
                     }
 
+#if UNITY_EDITOR
                     Debug.Log("[EOSNetworkManagerBridge] EOS Network session stopped.");
+#endif
                     OnEosSessionStopped?.Invoke();
                 }
             }
@@ -469,7 +528,6 @@ namespace JustAGame.Core.Network
                 if (!string.IsNullOrEmpty(id))
                 {
                     GUIUtility.systemCopyBuffer = id;
-                    Debug.Log($"[EOSNetworkManagerBridge] Copied EOS Product ID to clipboard: {id}");
                     return true;
                 }
                 else

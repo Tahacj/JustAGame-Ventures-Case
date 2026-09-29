@@ -76,7 +76,7 @@ namespace JustAGame.UI
         {
             try
             {
-                if (inventory.IsNull() || _boundInventory == inventory)
+                if (inventory.IsNull() || ReferenceEquals(_boundInventory, inventory))
                 {
                     return;
                 }
@@ -109,7 +109,7 @@ namespace JustAGame.UI
         {
             try
             {
-                if (_boundInventory.IsNotNull() && _boundInventory == inventory)
+                if (_boundInventory.IsNotNull() && ReferenceEquals(_boundInventory, inventory))
                 {
                     _boundInventory.OnMoneyUpdated -= OnMoneyChanged;
                     _boundInventory.OnInventoryUpdated -= OnInventoryChanged;

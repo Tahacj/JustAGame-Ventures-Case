@@ -134,8 +134,6 @@ namespace EpicTransport {
 
             if (result != Result.Success) {
                 Debug.LogError($"[EosTransport] SendInternal({type}) to {target} failed: {result}");
-            } else {
-                Debug.Log($"[EosTransport] SendInternal({type}) to {target} queued successfully.");
             }
         }
 
@@ -217,7 +215,9 @@ namespace EpicTransport {
                         OnReceiveInternalData((InternalMessages) internalMessage[0], clientUserID, socketId);
                         return; // Wait one frame
                     } else {
-                        Debug.Log("Incorrect package length on internal channel.");
+#if UNITY_EDITOR
+                        Debug.LogWarning("[EosTransport] Incorrect package length on internal channel.");
+#endif
                     }
                 }
 

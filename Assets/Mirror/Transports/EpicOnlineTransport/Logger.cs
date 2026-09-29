@@ -1,34 +1,33 @@
 using Epic.OnlineServices.Logging;
 using System;
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 namespace EpicTransport {
     public static class Logger {
 
         public static void EpicDebugLog(LogMessage message) {
+#if UNITY_EDITOR
             switch (message.Level) {
-                case LogLevel.Info:
-                    Debug.Log($"Epic Manager: Category - {message.Category} Message - {message.Message}");
-                    break;
                 case LogLevel.Error:
-                    Debug.LogError($"Epic Manager: Category - {message.Category} Message - {message.Message}");
+                    Debug.LogError($"[EOS SDK] [{message.Category}] {message.Message}");
                     break;
                 case LogLevel.Warning:
-                    Debug.LogWarning($"Epic Manager: Category - {message.Category} Message - {message.Message}");
+                    Debug.LogWarning($"[EOS SDK] [{message.Category}] {message.Message}");
                     break;
                 case LogLevel.Fatal:
-                    Debug.LogException(new Exception($"Epic Manager: Category - {message.Category} Message - {message.Message}"));
+                    Debug.LogException(new Exception($"[EOS SDK] [{message.Category}] {message.Message}"));
                     break;
-                case LogLevel.Verbose:
-                case LogLevel.VeryVerbose:
-                    Debug.Log($"[EOS SDK] [{message.Category}] {message.Message}");
+                case LogLevel.Info:
+                    // Only log high-level info in Editor, ignore verbose message spam
                     break;
                 default:
-                    Debug.Log($"Epic Manager: Category - {message.Category} Message - {message.Message}");
                     break;
             }
+#else
+            if (message.Level == LogLevel.Fatal || message.Level == LogLevel.Error) {
+                Debug.LogError($"[EOS SDK] [{message.Category}] {message.Message}");
+            }
+#endif
         }
     }
 }

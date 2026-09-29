@@ -54,7 +54,9 @@ namespace EpicTransport {
 
                 OnConnected += SetConnectedComplete;
 
+#if UNITY_EDITOR
                 Debug.Log($"[EosTransport/Client] Sending CONNECT packet to host ProductId: '{host}', LocalUserId: '{EOSSDKComponent.LocalUserProductIdString}' (Socket: '{socketId.SocketName}')");
+#endif
                 SendInternal(hostProductId, socketId, InternalMessages.CONNECT);
 
                 Task connectedCompleteTask = connectedComplete.Task;
@@ -115,7 +117,9 @@ namespace EpicTransport {
         }
 
         protected override void OnNewConnection(OnIncomingConnectionRequestInfo result) {
+#if UNITY_EDITOR
             Debug.Log($"[EosTransport/Client] OnIncomingConnectionRequest from {result.RemoteUserId} on socket {result.SocketId?.SocketName}");
+#endif
 
             if (ignoreAllMessages) {
                 Debug.LogWarning("[EosTransport/Client] Dropping incoming connection request because ignoreAllMessages is true.");
@@ -136,7 +140,9 @@ namespace EpicTransport {
                             RemoteUserId = result.RemoteUserId,
                             SocketId = result.SocketId
                         });
+#if UNITY_EDITOR
                     Debug.Log($"[EosTransport/Client] AcceptConnection from host {result.RemoteUserId} result: {res}");
+#endif
                 } else {
                     Debug.LogError("[EosTransport/Client] Cannot AcceptConnection: GetP2PInterface() returned null!");
                 }
@@ -146,7 +152,6 @@ namespace EpicTransport {
         }
 
         protected override void OnReceiveInternalData(InternalMessages type, ProductUserId clientUserId, SocketId socketId) {
-            Debug.Log($"[EosTransport/Client] OnReceiveInternalData: {type} from {clientUserId}");
             if (ignoreAllMessages) {
                 return;
             }
@@ -155,16 +160,21 @@ namespace EpicTransport {
                 case InternalMessages.ACCEPT_CONNECT:
                     Connected = true;
                     OnConnected.Invoke();
-                    Debug.Log("Connection established.");
+#if UNITY_EDITOR
+                    Debug.Log("[EosTransport/Client] Connection established.");
+#endif
                     break;
                 case InternalMessages.DISCONNECT:
                     Connected = false;
-                    Debug.Log("Disconnected.");
-
+#if UNITY_EDITOR
+                    Debug.Log("[EosTransport/Client] Disconnected.");
+#endif
                     OnDisconnected.Invoke();
                     break;
                 default:
-                    Debug.Log("Received unknown message type");
+#if UNITY_EDITOR
+                    Debug.LogWarning($"[EosTransport/Client] Received unknown message type: {type}");
+#endif
                     break;
             }
         }

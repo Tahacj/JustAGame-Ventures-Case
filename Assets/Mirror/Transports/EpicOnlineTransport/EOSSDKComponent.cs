@@ -239,12 +239,14 @@ namespace EpicTransport {
                 throw new System.Exception("Failed to initialize platform: " + initializeResult);
             }
 
-            // The SDK outputs lots of information that is useful for debugging.
-            // Setting to VeryVerbose to capture complete backend HTTP/diagnostic details.
-            LoggingInterface.SetLogLevel(LogCategory.AllCategories, LogLevel.VeryVerbose);
+            // The SDK outputs diagnostic information. In editor, use epicLoggerLevel (default Warning/Info). In player, only log Errors.
+#if UNITY_EDITOR
+            LoggingInterface.SetLogLevel(LogCategory.AllCategories, epicLoggerLevel);
             LoggingInterface.SetCallback(message => Logger.EpicDebugLog(message));
-
             Debug.Log($"[EOSSDKComponent] Initializing Platform with ProductId: {apiKeys.epicProductId}, SandboxId: {apiKeys.epicSandboxId}, DeploymentId: {apiKeys.epicDeploymentId}, ClientId: {apiKeys.epicClientId}");
+#else
+            LoggingInterface.SetLogLevel(LogCategory.AllCategories, LogLevel.Error);
+#endif
 
             var options = new Options() {
                 ProductId = apiKeys.epicProductId,
@@ -369,7 +371,9 @@ namespace EpicTransport {
                 var connect = instance.EOS.GetConnectInterface();
                 if (connect != null) {
                     connect.DeleteDeviceId(new Epic.OnlineServices.Connect.DeleteDeviceIdOptions(), null, (Epic.OnlineServices.Connect.DeleteDeviceIdCallbackInfo cb) => {
+#if UNITY_EDITOR
                         Debug.Log("[EOSSDKComponent] DeleteDeviceId returned: " + cb.ResultCode);
+#endif
                         onComplete?.Invoke(cb.ResultCode);
                     });
                 } else {
@@ -382,12 +386,16 @@ namespace EpicTransport {
 
         private void OnAuthInterfaceLogin(Epic.OnlineServices.Auth.LoginCallbackInfo loginCallbackInfo) {
             if (loginCallbackInfo.ResultCode == Result.Success) {
+#if UNITY_EDITOR
                 Debug.Log("[EOSSDKComponent] Auth Interface Login succeeded");
+#endif
 
                 string accountIdString;
                 Result result = loginCallbackInfo.LocalUserId.ToString(out accountIdString);
                 if (Result.Success == result) {
+#if UNITY_EDITOR
                     Debug.Log("[EOSSDKComponent] EOS User ID: " + accountIdString);
+#endif
 
                     localUserAccountIdString = accountIdString;
                     localUserAccountId = loginCallbackInfo.LocalUserId;
@@ -435,19 +443,25 @@ namespace EpicTransport {
             loginOptions.Credentials.Type = connectInterfaceCredentialType;
             loginOptions.Credentials.Token = connectInterfaceCredentialToken;
 
-            Debug.Log($"<color=#00FFFF>[EOSSDKComponent] Initiating ConnectInterface.Login | Type: {connectInterfaceCredentialType} ({(int)connectInterfaceCredentialType}) | TokenLength: {connectInterfaceCredentialToken?.Length ?? 0} | Sandbox: {apiKeys.epicSandboxId} | Deployment: {apiKeys.epicDeploymentId} | ClientId: {apiKeys.epicClientId}</color>");
+#if UNITY_EDITOR
+            Debug.Log($"<color=#00FFFF>[EOSSDKComponent] Initiating ConnectInterface.Login | Type: {connectInterfaceCredentialType} ({(int)connectInterfaceCredentialType}) | TokenLength: {connectInterfaceCredentialToken?.Length ?? 0}</color>");
+#endif
 
             EOS.GetConnectInterface().Login(loginOptions, null, OnConnectInterfaceLogin);
         }
 
         private void OnConnectInterfaceLogin(Epic.OnlineServices.Connect.LoginCallbackInfo loginCallbackInfo) {
             if (loginCallbackInfo.ResultCode == Result.Success) {
+#if UNITY_EDITOR
                 Debug.Log("<color=#55FF55>[EOSSDKComponent] Connect Interface Login succeeded!</color>");
+#endif
 
                 string productIdString;
                 Result result = loginCallbackInfo.LocalUserId.ToString(out productIdString);
                 if (Result.Success == result) {
+#if UNITY_EDITOR
                     Debug.Log("<color=#55FF55>[EOSSDKComponent] EOS User Product ID: " + productIdString + "</color>");
+#endif
 
                     localUserProductIdString = productIdString;
                     localUserProductId = loginCallbackInfo.LocalUserId;
@@ -460,7 +474,9 @@ namespace EpicTransport {
                 var authExpirationOptions = new Epic.OnlineServices.Connect.AddNotifyAuthExpirationOptions();
                 authExpirationHandle = EOS.GetConnectInterface().AddNotifyAuthExpiration(authExpirationOptions, null, OnAuthExpiration);
             } else if (loginCallbackInfo.ResultCode == Result.InvalidUser) {
+#if UNITY_EDITOR
                 Debug.Log("[EOSSDKComponent] First-time login: Creating new EOS Connect user...");
+#endif
                 EOS.GetConnectInterface().CreateUser(new Epic.OnlineServices.Connect.CreateUserOptions() { ContinuanceToken = loginCallbackInfo.ContinuanceToken }, null, (Epic.OnlineServices.Connect.CreateUserCallbackInfo cb) => {
                     if (cb.ResultCode != Result.Success) {
                         Debug.LogError("[EOSSDKComponent] Connect CreateUser failed: " + cb.ResultCode);
@@ -479,7 +495,6 @@ namespace EpicTransport {
         }
         
         private void OnAuthExpiration(Epic.OnlineServices.Connect.AuthExpirationCallbackInfo authExpirationCallbackInfo) {
-            Debug.Log("AuthExpiration callback");
             EOS.GetConnectInterface().RemoveNotifyAuthExpiration(authExpirationHandle);
             ConnectInterfaceLogin();
         }

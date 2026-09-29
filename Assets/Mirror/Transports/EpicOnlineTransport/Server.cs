@@ -40,7 +40,9 @@ namespace EpicTransport {
 
         protected override void OnNewConnection(OnIncomingConnectionRequestInfo result) {
             try {
+#if UNITY_EDITOR
                 Debug.Log($"[EosTransport/Server] Incoming P2P connection request from {result.RemoteUserId} (Socket: {result.SocketId?.SocketName})");
+#endif
 
                 if (ignoreAllMessages) {
                     Debug.LogWarning("[EosTransport/Server] Dropping incoming connection request because ignoreAllMessages is true (startup cooldown).");
@@ -83,7 +85,9 @@ namespace EpicTransport {
                                     RemoteUserId = result.RemoteUserId,
                                     SocketId = result.SocketId
                                 });
+#if UNITY_EDITOR
                             Debug.Log($"[EosTransport/Server] AcceptConnection from {result.RemoteUserId} result: {acceptResult}");
+#endif
                         } else {
                             Debug.LogError("[EosTransport/Server] Cannot AcceptConnection: GetP2PInterface() returned null!");
                         }
@@ -117,7 +121,9 @@ namespace EpicTransport {
 
                     string clientUserIdString;
                     clientUserId.ToString(out clientUserIdString);
-                    Debug.Log($"Client with Product User ID {clientUserIdString} connected. Assigning connection id {connectionId}");
+#if UNITY_EDITOR
+                    Debug.Log($"[EosTransport/Server] Client with Product User ID {clientUserIdString} connected. Assigning connection id {connectionId}");
+#endif
                     break;
                 case InternalMessages.DISCONNECT:
                     if (epicToMirrorIds.TryGetValue(clientUserId, out int connId)) {
@@ -125,14 +131,18 @@ namespace EpicTransport {
                         //CloseP2PSessionWithUser(clientUserId, socketId);
                         epicToMirrorIds.Remove(clientUserId);
                         epicToSocketIds.Remove(clientUserId);
-                        Debug.Log($"Client with Product User ID {clientUserId} disconnected.");
+#if UNITY_EDITOR
+                        Debug.Log($"[EosTransport/Server] Client with Product User ID {clientUserId} disconnected.");
+#endif
                     } else {
                         OnReceivedError.Invoke(-1, new Exception("ERROR Unknown Product User ID"));
                     }
 
                     break;
                 default:
-                    Debug.Log("Received unknown message type");
+#if UNITY_EDITOR
+                    Debug.LogWarning($"[EosTransport/Server] Received unknown message type: {type}");
+#endif
                     break;
             }
         }

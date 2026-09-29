@@ -22,6 +22,52 @@ namespace JustAGame.Core.Network
 
         public static bool IsSteamInitialized => _isInitialized;
 
+        public string SteamPersonaName
+        {
+            get
+            {
+                try
+                {
+                    if (_isInitialized)
+                    {
+                        return SteamFriends.GetPersonaName();
+                    }
+                    else
+                    {
+                        return string.Empty;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[SteamAuthManager] Exception getting SteamPersonaName: {ex.Message}");
+                    return string.Empty;
+                }
+            }
+        }
+
+        public string SteamIdString
+        {
+            get
+            {
+                try
+                {
+                    if (_isInitialized)
+                    {
+                        return SteamUser.GetSteamID().m_SteamID.ToString();
+                    }
+                    else
+                    {
+                        return string.Empty;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[SteamAuthManager] Exception getting SteamIdString: {ex.Message}");
+                    return string.Empty;
+                }
+            }
+        }
+
         public static event Action<string, string> OnSteamTicketAcquired;
         public static event Action<string> OnSteamAuthFailed;
 
@@ -62,7 +108,7 @@ namespace JustAGame.Core.Network
                     DontDestroyOnLoad(gameObject);
                     InitializeSteamAPI();
                 }
-                else if (Instance != this)
+                else if (!ReferenceEquals(Instance, this))
                 {
                     Destroy(gameObject);
                 }
@@ -97,7 +143,9 @@ namespace JustAGame.Core.Network
                 {
                     string persona = SteamFriends.GetPersonaName();
                     CSteamID steamId = SteamUser.GetSteamID();
+#if UNITY_EDITOR
                     Debug.Log($"<color=#55FF55>[SteamAuthManager] Steamworks initialized successfully! Logged in as: {persona} (SteamID: {steamId})</color>");
+#endif
 
                     _getTicketForWebApiResponseCallback = Callback<GetTicketForWebApiResponse_t>.Create(HandleGetTicketForWebApiResponse);
                 }
@@ -156,7 +204,7 @@ namespace JustAGame.Core.Network
                     // Not initialized
                 }
 
-                if (Instance == this)
+                if (ReferenceEquals(Instance, this))
                 {
                     Instance = null;
                 }
@@ -198,7 +246,7 @@ namespace JustAGame.Core.Network
             }
         }
 
-        private void StartSteamLogin(Action<bool, string> onComplete)
+        public void StartSteamLogin(Action<bool, string> onComplete)
         {
             try
             {
@@ -239,9 +287,9 @@ namespace JustAGame.Core.Network
 
                 uint appId = SteamUtils.GetAppID().m_AppId;
                 CSteamID steamId = SteamUser.GetSteamID();
-                Debug.Log($"<color=#FFFF00>[SteamAuthManager] Current Steam AppID: {appId}, SteamID64: {steamId.m_SteamID}, Persona: {SteamFriends.GetPersonaName()}</color>");
-
-                Debug.Log($"[SteamAuthManager] Requesting WebApi Auth Ticket for service identity: '{EOS_IDENTITY}'...");
+#if UNITY_EDITOR
+                Debug.Log($"[SteamAuthManager] Requesting WebApi ticket for '{EOS_IDENTITY}' (AppID: {appId}, Persona: {SteamFriends.GetPersonaName()})...");
+#endif
                 _activeAuthTicket = SteamUser.GetAuthTicketForWebApi(EOS_IDENTITY);
 
                 if (_activeAuthTicket == HAuthTicket.Invalid)
@@ -251,7 +299,7 @@ namespace JustAGame.Core.Network
                 }
                 else
                 {
-                    Debug.Log($"[SteamAuthManager] WebApi ticket requested with handle: {_activeAuthTicket}. Awaiting Steam callback...");
+                    // Ticket requested, awaiting callback
                 }
             }
             catch (Exception ex)
@@ -292,10 +340,16 @@ namespace JustAGame.Core.Network
                         }
                         hexToken = sb.ToString();
                     }
+                    else
+                    {
+                        // Native string conversion succeeded
+                    }
 
                     string persona = SteamFriends.GetPersonaName();
 
-                    Debug.Log($"<color=#55FF55>[SteamAuthManager] Successfully received Steam WebApi ticket! Size: {ticketLen} bytes. Hex preview: {hexToken.Substring(0, Math.Min(16, hexToken.Length))}...{hexToken.Substring(Math.Max(0, hexToken.Length - 16))}. Forwarding to EOSSDKComponent...</color>");
+#if UNITY_EDITOR
+                    Debug.Log($"<color=#55FF55>[SteamAuthManager] Received Steam WebApi ticket ({ticketLen} bytes). Authenticating with EOS...</color>");
+#endif
 
                     OnSteamTicketAcquired?.Invoke(hexToken, persona);
                     _pendingLoginCallback?.Invoke(true, hexToken);
@@ -336,7 +390,9 @@ namespace JustAGame.Core.Network
                     string hexToken = sb.ToString();
                     string persona = SteamFriends.GetPersonaName();
 
-                    Debug.Log($"<color=#55FF55>[SteamAuthManager] Fallback Steam session ticket generated! Size: {ticketSize} bytes. Forwarding to EOS...</color>");
+#if UNITY_EDITOR
+                    Debug.Log($"<color=#55FF55>[SteamAuthManager] Fallback Steam session ticket generated ({ticketSize} bytes). Forwarding to EOS...</color>");
+#endif
                     OnSteamTicketAcquired?.Invoke(hexToken, persona);
                     _pendingLoginCallback?.Invoke(true, hexToken);
                     _pendingLoginCallback = null;

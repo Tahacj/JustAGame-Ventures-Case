@@ -133,7 +133,9 @@ namespace EpicTransport {
             }
 
             if (!ClientActive() || client.Error) {
-                Debug.Log($"Starting client, target address {address}.");
+#if UNITY_EDITOR
+                Debug.Log($"[EosTransport] Starting client, target address {address}.");
+#endif
 
                 client = Client.CreateClient(this, address);
                 activeNode = client;
@@ -151,10 +153,7 @@ namespace EpicTransport {
                     sessionOptions.GameSessionId = null;
                     sessionOptions.ServerIp = null;
                     Result result = EOSSDKComponent.GetMetricsInterface().BeginPlayerSession(sessionOptions);
-
-                    if(result == Result.Success) {
-                        Debug.Log("[EosTransport] Started EOS Metric Session for Client.");
-                    } else {
+                    if (result != Result.Success) {
                         Debug.LogWarning("[EosTransport] BeginPlayerSession result: " + result);
                     }
                 }
@@ -197,7 +196,9 @@ namespace EpicTransport {
             }
 
             if (!ServerActive()) {
-                Debug.Log("Starting server.");
+#if UNITY_EDITOR
+                Debug.Log("[EosTransport] Starting server.");
+#endif
 
                 MatchSessionSocketName = RandomString.Generate(20);
                 server = Server.CreateServer(this, NetworkManager.singleton.maxConnections);
@@ -216,10 +217,7 @@ namespace EpicTransport {
                     sessionOptions.GameSessionId = null;
                     sessionOptions.ServerIp = null;
                     Result result = EOSSDKComponent.GetMetricsInterface().BeginPlayerSession(sessionOptions);
-
-                    if (result == Result.Success) {
-                        Debug.Log("[EosTransport] Started EOS Metric Session for Host.");
-                    } else {
+                    if (result != Result.Success) {
                         Debug.LogWarning("[EosTransport] Server BeginPlayerSession result: " + result);
                     }
                 }
@@ -304,10 +302,7 @@ namespace EpicTransport {
                         }
 
                         if (hasId) {
-                            Result result = metrics.EndPlayerSession(endSessionOptions);
-                            if (result == Result.Success) {
-                                Debug.Log("[EosTransport] Stopped EOS Metric Session.");
-                            }
+                            metrics.EndPlayerSession(endSessionOptions);
                         }
                     }
                 }
@@ -321,7 +316,9 @@ namespace EpicTransport {
             server = null;
             client = null;
             activeNode = null;
-            Debug.Log("Transport shut down.");
+#if UNITY_EDITOR
+            Debug.Log("[EosTransport] Transport shut down.");
+#endif
         }
 
         public int GetMaxSinglePacketSize(int channelId) => P2PInterface.MaxPacketSize - 10; // 1159 bytes, we need to remove 10 bytes for the packet header (id (4 bytes) + fragment (4 bytes) + more fragments (1 byte)) 

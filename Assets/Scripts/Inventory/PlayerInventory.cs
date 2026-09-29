@@ -72,7 +72,7 @@ namespace JustAGame.Inventory
             {
                 _items.Callback -= OnSyncListCallback;
 
-                if (isOwned && LocalPlayer == this)
+                if (isOwned && ReferenceEquals(LocalPlayer, this))
                 {
                     OnLocalPlayerRemoved?.Invoke(this);
                     LocalPlayer = null;
@@ -96,7 +96,7 @@ namespace JustAGame.Inventory
             {
                 _items.Callback -= OnSyncListCallback;
 
-                if (LocalPlayer == this)
+                if (ReferenceEquals(LocalPlayer, this))
                 {
                     LocalPlayer = null;
                 }
@@ -140,7 +140,15 @@ namespace JustAGame.Inventory
         [Server]
         public bool HasEnoughMoney(int amount)
         {
-            return amount >= 0 && _money >= amount;
+            try
+            {
+                return amount >= 0 && _money >= amount;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[PlayerInventory] Exception in HasEnoughMoney: {ex.Message}");
+                return false;
+            }
         }
 
         [Server]

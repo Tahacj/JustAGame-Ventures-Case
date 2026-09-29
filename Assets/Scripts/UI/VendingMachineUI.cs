@@ -108,7 +108,14 @@ namespace JustAGame.UI
                 }
 
                 ClearActiveButtons();
-                _buttonPool?.Clear();
+                if (_buttonPool.IsNotNull())
+                {
+                    _buttonPool.Clear();
+                }
+                else
+                {
+                    // Pool already cleared or null
+                }
             }
             catch (Exception ex)
             {
@@ -197,7 +204,7 @@ namespace JustAGame.UI
         {
             try
             {
-                if (targetMachine == machine)
+                if (ReferenceEquals(targetMachine, machine))
                 {
                     CloseShop();
                 }
@@ -257,7 +264,7 @@ namespace JustAGame.UI
                 {
                     _canvas.enabled = visible;
                 }
-                else if (shopPanel.IsNotNull() && shopPanel != gameObject)
+                else if (shopPanel.IsNotNull() && !ReferenceEquals(shopPanel, gameObject))
                 {
                     shopPanel.SetActive(visible);
                 }

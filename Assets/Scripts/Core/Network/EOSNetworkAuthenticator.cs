@@ -64,7 +64,7 @@ namespace JustAGame.Core.Network
                 }
                 else
                 {
-                    if (Instance != this)
+                    if (!ReferenceEquals(Instance, this))
                     {
                         Destroy(gameObject);
                         return;
@@ -189,7 +189,9 @@ namespace JustAGame.Core.Network
                     };
 
                     NetworkClient.Send(request);
+#if UNITY_EDITOR
                     Debug.Log($"[EOSNetworkAuthenticator] Sent auth handshake for PUID: {localPuid}");
+#endif
                 }
             }
             catch (Exception ex)
@@ -230,7 +232,9 @@ namespace JustAGame.Core.Network
                         });
 
                         ServerAccept(conn);
+#if UNITY_EDITOR
                         Debug.Log($"[EOSNetworkAuthenticator] Local host connection (ID: {conn.connectionId}) authenticated successfully with PUID: {hostPuid}");
+#endif
                         return;
                     }
                     else
@@ -287,7 +291,9 @@ namespace JustAGame.Core.Network
 
                     // 4. Bind connection and accept
                     _authenticatedPeers[conn.connectionId] = verifiedAddress;
+#if UNITY_EDITOR
                     Debug.Log($"[EOSNetworkAuthenticator] Successfully authenticated connection {conn.connectionId} with verified PUID: {verifiedAddress}");
+#endif
 
                     conn.Send(new EOSAuthResponseMessage
                     {
@@ -311,7 +317,9 @@ namespace JustAGame.Core.Network
             {
                 if (msg.success)
                 {
+#if UNITY_EDITOR
                     Debug.Log("[EOSNetworkAuthenticator] Authentication handshake accepted by server.");
+#endif
                     ClientAccept();
                 }
                 else

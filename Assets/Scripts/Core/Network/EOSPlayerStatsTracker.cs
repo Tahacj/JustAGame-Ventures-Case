@@ -46,7 +46,6 @@ namespace JustAGame.Core.Network
             try
             {
                 LocalInstance = this;
-                Debug.Log($"[EOSPlayerStatsTracker] Local tracking initialized for player: {gameObject.name}");
 
                 // Instantly restore cached distance from previous sessions on this machine
                 RestoreCachedDistance();
@@ -127,7 +126,9 @@ namespace JustAGame.Core.Network
                     if (currentPuid != _lastSyncedPuid && !string.IsNullOrEmpty(currentPuid))
                     {
                         _lastSyncedPuid = currentPuid;
+#if UNITY_EDITOR
                         Debug.Log($"[EOSPlayerStatsTracker] Active EOS session detected for user: {currentPuid}. Synchronizing cloud stats and achievements...");
+#endif
 
                         RestoreCachedDistance();
                         QueryStatsStatus();
@@ -156,16 +157,26 @@ namespace JustAGame.Core.Network
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
 #if ENABLE_INPUT_SYSTEM
-                if (UnityEngine.InputSystem.Keyboard.current != null && UnityEngine.InputSystem.Keyboard.current.f9Key.wasPressedThisFrame)
+                if (UnityEngine.InputSystem.Keyboard.current.IsNotNull() && UnityEngine.InputSystem.Keyboard.current.f9Key.wasPressedThisFrame)
                 {
                     ResetLocalProgress();
+                }
+                else
+                {
+                    // No reset key pressed
                 }
 #else
                 if (Input.GetKeyDown(KeyCode.F9))
                 {
                     ResetLocalProgress();
                 }
+                else
+                {
+                    // No reset key pressed
+                }
 #endif
+#else
+                // Hotkeys disabled in production builds
 #endif
             }
             catch (Exception ex)
@@ -204,7 +215,9 @@ namespace JustAGame.Core.Network
                 OnDistanceUpdated?.Invoke(0f, ACHIEVEMENT_TARGET_DISTANCE);
                 OnAchievementSyncStatusChanged?.Invoke(false);
 
+#if UNITY_EDITOR
                 Debug.Log("[EOSPlayerStatsTracker] Local distance and achievement progress successfully reset to 0.0m (RED).");
+#endif
             }
             catch (Exception ex)
             {
@@ -291,7 +304,6 @@ namespace JustAGame.Core.Network
                     isAchievementBackendSynced = synced;
                     OnAchievementSyncStatusChanged?.Invoke(synced);
                     SaveCachedDistance();
-                    Debug.Log($"[EOSPlayerStatsTracker] Achievement backend sync status updated: {synced}");
                 }
                 else
                 {
@@ -304,11 +316,13 @@ namespace JustAGame.Core.Network
             }
         }
 
-        private void TriggerAchievementUnlock()
+        public void TriggerAchievementUnlock()
         {
             try
             {
+#if UNITY_EDITOR
                 Debug.Log("[EOSPlayerStatsTracker] [ACHIEVEMENT UNLOCKED] Century Walker (100m Walked)!");
+#endif
                 OnAchievementUnlockedEvent?.Invoke(ACHIEVEMENT_ID_100M);
 
                 // Flush any remaining unreported distance so backend stat evaluation triggers immediately
@@ -357,22 +371,22 @@ namespace JustAGame.Core.Network
                                 {
                                     if (callbackInfo.ResultCode == Result.Success)
                                     {
+#if UNITY_EDITOR
                                         Debug.Log($"[EOSPlayerStatsTracker] Successfully pushed unlock for '{ACHIEVEMENT_ID_100M}' to EOS Backend!");
+#endif
                                         SetBackendSynced(true);
                                     }
                                     else if (callbackInfo.ResultCode == Result.NoChange || callbackInfo.ResultCode == Result.DuplicateNotAllowed)
                                     {
-                                        Debug.Log($"[EOSPlayerStatsTracker] Achievement '{ACHIEVEMENT_ID_100M}' is already unlocked on EOS Backend.");
                                         SetBackendSynced(true);
                                     }
                                     else if (callbackInfo.ResultCode == Result.NotConfigured)
                                     {
-                                        Debug.Log($"[EOSPlayerStatsTracker] Note: Achievement '{ACHIEVEMENT_ID_100M}' is configured as stat-driven (Rule: {STAT_NAME_DISTANCE} >= 100). The EOS backend automatically unlocks it via stat ingestion.");
                                         QueryAchievementsStatus();
                                     }
                                     else
                                     {
-                                        Debug.Log($"[EOSPlayerStatsTracker] EOS Achievements Unlock returned: {callbackInfo.ResultCode}.");
+                                        // Other backend response
                                     }
                                 }
                                 catch (Exception cbEx)
@@ -390,7 +404,7 @@ namespace JustAGame.Core.Network
             }
         }
 
-        private void IngestDistanceMetric(int metersWalked)
+        public void IngestDistanceMetric(int metersWalked)
         {
             try
             {
@@ -400,8 +414,9 @@ namespace JustAGame.Core.Network
                 }
                 else
                 {
+#if UNITY_EDITOR
                     Debug.Log($"[EOSPlayerStatsTracker] Ingesting distance metric: +{metersWalked}m (Total: {totalDistanceWalked:F1}m)");
-
+#endif
                     // Always ensure local cache is updated immediately to guarantee zero data loss
                     SaveCachedDistance();
 
@@ -445,8 +460,6 @@ namespace JustAGame.Core.Network
                                     {
                                         if (callbackInfo.ResultCode == Result.Success)
                                         {
-                                            Debug.Log($"[EOSPlayerStatsTracker] Successfully ingested {metersWalked}m for stat '{STAT_NAME_DISTANCE}' to EOS Backend!");
-
                                             // If distance milestone reached, verify backend stat rule evaluation
                                             if (totalDistanceWalked >= ACHIEVEMENT_TARGET_DISTANCE && !isAchievementBackendSynced)
                                             {
@@ -459,7 +472,7 @@ namespace JustAGame.Core.Network
                                         }
                                         else
                                         {
-                                            Debug.Log($"[EOSPlayerStatsTracker] EOS Stats Ingest returned: {callbackInfo.ResultCode} (Stat '{STAT_NAME_DISTANCE}' registered in Developer Portal > Stats).");
+                                            // Backend stat ingest failed
                                         }
                                     }
                                     catch (Exception cbEx)
@@ -505,12 +518,13 @@ namespace JustAGame.Core.Network
                                     achievementUnlocked = true;
                                     SetBackendSynced(true);
                                     OnAchievementUnlockedEvent?.Invoke(callbackInfo.AchievementId);
-                                    Debug.Log($"[EOSPlayerStatsTracker] EOS Backend verified achievement unlock: {callbackInfo.AchievementId} at {callbackInfo.UnlockTime}!");
+#if UNITY_EDITOR
+                                    Debug.Log($"[EOSPlayerStatsTracker] EOS Backend verified achievement unlock: {callbackInfo.AchievementId}!");
+#endif
                                 }
                                 else
                                 {
                                     OnAchievementUnlockedEvent?.Invoke(callbackInfo.AchievementId);
-                                    Debug.Log($"[EOSPlayerStatsTracker] EOS Backend unlocked achievement: {callbackInfo.AchievementId}");
                                 }
                             }
                             catch (Exception ex)
@@ -555,7 +569,7 @@ namespace JustAGame.Core.Network
             }
         }
 
-        private void QueryAchievementsStatus()
+        public void QueryAchievementsStatus()
         {
             try
             {
@@ -608,11 +622,13 @@ namespace JustAGame.Core.Network
                                                 SetBackendSynced(true);
                                                 SaveCachedDistance();
                                                 OnDistanceUpdated?.Invoke(totalDistanceWalked, ACHIEVEMENT_TARGET_DISTANCE);
-                                                Debug.Log($"[EOSPlayerStatsTracker] Achievement '{ACHIEVEMENT_ID_100M}' is verified UNLOCKED on EOS backend (Progress: {playerAch.Progress}%).");
+#if UNITY_EDITOR
+                                                Debug.Log($"[EOSPlayerStatsTracker] Achievement '{ACHIEVEMENT_ID_100M}' is verified UNLOCKED on EOS backend.");
+#endif
                                             }
                                             else
                                             {
-                                                Debug.Log($"[EOSPlayerStatsTracker] Achievement '{ACHIEVEMENT_ID_100M}' current progress on backend: {playerAch.Progress}%.");
+                                                // Achievement in progress on backend
                                             }
                                         }
                                         else
@@ -622,7 +638,7 @@ namespace JustAGame.Core.Network
                                     }
                                     else
                                     {
-                                        Debug.Log($"[EOSPlayerStatsTracker] QueryPlayerAchievements returned: {callbackInfo.ResultCode}");
+                                        // Query failed
                                     }
                                 }
                                 catch (Exception ex)
@@ -640,7 +656,7 @@ namespace JustAGame.Core.Network
             }
         }
 
-        private void QueryStatsStatus()
+        public void QueryStatsStatus()
         {
             try
             {
@@ -687,7 +703,9 @@ namespace JustAGame.Core.Network
                                         if (copyResult == Result.Success && stat.IsNotNull())
                                         {
                                             float cloudDistance = (float)stat.Value;
-                                            Debug.Log($"[EOSPlayerStatsTracker] Successfully fetched cloud distance from EOS: {cloudDistance}m (Current local: {totalDistanceWalked:F1}m)");
+#if UNITY_EDITOR
+                                            Debug.Log($"[EOSPlayerStatsTracker] Fetched cloud distance: {cloudDistance}m (Local: {totalDistanceWalked:F1}m)");
+#endif
 
                                             if (cloudDistance > totalDistanceWalked)
                                             {
@@ -720,12 +738,12 @@ namespace JustAGame.Core.Network
                                         }
                                         else
                                         {
-                                            Debug.Log($"[EOSPlayerStatsTracker] Stat '{STAT_NAME_DISTANCE}' has no recorded value on EOS backend yet.");
+                                            // Stat has no recorded value yet
                                         }
                                     }
                                     else
                                     {
-                                        Debug.Log($"[EOSPlayerStatsTracker] QueryStats returned: {callbackInfo.ResultCode}");
+                                        // QueryStats failed
                                     }
                                 }
                                 catch (Exception cbEx)
@@ -784,7 +802,9 @@ namespace JustAGame.Core.Network
                 }
 
                 OnDistanceUpdated?.Invoke(totalDistanceWalked, ACHIEVEMENT_TARGET_DISTANCE);
+#if UNITY_EDITOR
                 Debug.Log($"[EOSPlayerStatsTracker] Restored cached profile: Dist={totalDistanceWalked:F1}m, Unlocked={achievementUnlocked}, Synced={isAchievementBackendSynced} for {key}");
+#endif
             }
             catch (Exception ex)
             {

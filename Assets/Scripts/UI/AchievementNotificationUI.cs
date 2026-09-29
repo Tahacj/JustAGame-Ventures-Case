@@ -170,7 +170,9 @@ namespace JustAGame.UI
                         // No audio configured
                     }
 
+#if UNITY_EDITOR
                 Debug.Log($"<color=#FFD700>[AchievementNotificationUI] Showing sliding achievement banner: '{title}' - '{description}'</color>");
+#endif
 
                 if (_activeAnimationCoroutine.IsNotNull())
                 {
@@ -270,12 +272,16 @@ namespace JustAGame.UI
                     if (existing.IsNotNull())
                     {
                         notificationPanel = existing.gameObject;
-                        panelRect = notificationPanel.GetComponent<RectTransform>();
-                        canvasGroup = notificationPanel.GetComponent<CanvasGroup>();
-                        iconImage = notificationPanel.transform.Find("Icon")?.GetComponent<Image>();
-                        headerTMP = notificationPanel.transform.Find("Header")?.GetComponent<TextMeshProUGUI>();
-                        titleTMP = notificationPanel.transform.Find("Title")?.GetComponent<TextMeshProUGUI>();
-                        descriptionTMP = notificationPanel.transform.Find("Description")?.GetComponent<TextMeshProUGUI>();
+                        panelRect = notificationPanel.GetComponentOrNull<RectTransform>();
+                        canvasGroup = notificationPanel.GetComponentOrNull<CanvasGroup>();
+                        Transform iconTransform = notificationPanel.transform.Find("Icon");
+                        iconImage = iconTransform.IsNotNull() ? iconTransform.GetComponentOrNull<Image>() : null;
+                        Transform headerTransform = notificationPanel.transform.Find("Header");
+                        headerTMP = headerTransform.IsNotNull() ? headerTransform.GetComponentOrNull<TextMeshProUGUI>() : null;
+                        Transform titleTransform = notificationPanel.transform.Find("Title");
+                        titleTMP = titleTransform.IsNotNull() ? titleTransform.GetComponentOrNull<TextMeshProUGUI>() : null;
+                        Transform descTransform = notificationPanel.transform.Find("Description");
+                        descriptionTMP = descTransform.IsNotNull() ? descTransform.GetComponentOrNull<TextMeshProUGUI>() : null;
                         return;
                     }
                     else
@@ -303,16 +309,26 @@ namespace JustAGame.UI
             {
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
 #if ENABLE_INPUT_SYSTEM
-                if (UnityEngine.InputSystem.Keyboard.current != null && UnityEngine.InputSystem.Keyboard.current.f7Key.wasPressedThisFrame)
+                if (UnityEngine.InputSystem.Keyboard.current.IsNotNull() && UnityEngine.InputSystem.Keyboard.current.f7Key.wasPressedThisFrame)
                 {
                     TestShowAchievement();
+                }
+                else
+                {
+                    // No test key pressed
                 }
 #else
                 if (Input.GetKeyDown(KeyCode.F7))
                 {
                     TestShowAchievement();
                 }
+                else
+                {
+                    // No test key pressed
+                }
 #endif
+#else
+                // In production builds, hotkeys disabled
 #endif
             }
             catch (Exception ex)
@@ -337,43 +353,94 @@ namespace JustAGame.UI
                 GameObject canvasObj = new GameObject("AchievementOverlayCanvas", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
                 DontDestroyOnLoad(canvasObj);
 
-                Canvas canvas = canvasObj.GetComponent<Canvas>();
-                canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-                canvas.sortingOrder = 999; // Top of all game UI
+                Canvas canvas = canvasObj.GetComponentOrNull<Canvas>();
+                if (canvas.IsNotNull())
+                {
+                    canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+                    canvas.sortingOrder = 999; // Top of all game UI
+                }
+                else
+                {
+                    // Canvas missing
+                }
 
-                CanvasScaler scaler = canvasObj.GetComponent<CanvasScaler>();
-                scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-                scaler.referenceResolution = new Vector2(1920f, 1080f);
-                scaler.matchWidthOrHeight = 0.5f;
+                CanvasScaler scaler = canvasObj.GetComponentOrNull<CanvasScaler>();
+                if (scaler.IsNotNull())
+                {
+                    scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                    scaler.referenceResolution = new Vector2(1920f, 1080f);
+                    scaler.matchWidthOrHeight = 0.5f;
+                }
+                else
+                {
+                    // Scaler missing
+                }
 
                 // Create Panel
                 notificationPanel = new GameObject("AchievementNotificationPanel", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(CanvasGroup));
                 notificationPanel.transform.SetParent(canvasObj.transform, false);
 
-                panelRect = notificationPanel.GetComponent<RectTransform>();
-                panelRect.anchorMin = new Vector2(0.5f, 1f);
-                panelRect.anchorMax = new Vector2(0.5f, 1f);
-                panelRect.pivot = new Vector2(0.5f, 1f);
-                panelRect.sizeDelta = new Vector2(420f, 80f);
-                panelRect.anchoredPosition = hiddenPosition;
+                panelRect = notificationPanel.GetComponentOrNull<RectTransform>();
+                if (panelRect.IsNotNull())
+                {
+                    panelRect.anchorMin = new Vector2(0.5f, 1f);
+                    panelRect.anchorMax = new Vector2(0.5f, 1f);
+                    panelRect.pivot = new Vector2(0.5f, 1f);
+                    panelRect.sizeDelta = new Vector2(420f, 80f);
+                    panelRect.anchoredPosition = hiddenPosition;
+                }
+                else
+                {
+                    // Panel rect missing
+                }
 
-                Image panelBg = notificationPanel.GetComponent<Image>();
-                panelBg.color = new Color(0.06f, 0.08f, 0.12f, 0.95f);
+                Image panelBg = notificationPanel.GetComponentOrNull<Image>();
+                if (panelBg.IsNotNull())
+                {
+                    panelBg.color = new Color(0.06f, 0.08f, 0.12f, 0.95f);
+                }
+                else
+                {
+                    // Panel background missing
+                }
 
                 // Add gold border accent line at top
                 GameObject accentObj = new GameObject("GoldAccent", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
                 accentObj.transform.SetParent(notificationPanel.transform, false);
-                RectTransform accentRect = accentObj.GetComponent<RectTransform>();
-                accentRect.anchorMin = new Vector2(0f, 1f);
-                accentRect.anchorMax = new Vector2(1f, 1f);
-                accentRect.pivot = new Vector2(0.5f, 1f);
-                accentRect.sizeDelta = new Vector2(0f, 3f);
-                accentRect.anchoredPosition = Vector2.zero;
-                accentObj.GetComponent<Image>().color = new Color(1f, 0.84f, 0.0f, 1f);
+                RectTransform accentRect = accentObj.GetComponentOrNull<RectTransform>();
+                if (accentRect.IsNotNull())
+                {
+                    accentRect.anchorMin = new Vector2(0f, 1f);
+                    accentRect.anchorMax = new Vector2(1f, 1f);
+                    accentRect.pivot = new Vector2(0.5f, 1f);
+                    accentRect.sizeDelta = new Vector2(0f, 3f);
+                    accentRect.anchoredPosition = Vector2.zero;
+                }
+                else
+                {
+                    // Accent rect missing
+                }
 
-                canvasGroup = notificationPanel.GetComponent<CanvasGroup>();
-                canvasGroup.alpha = 0f;
-                canvasGroup.blocksRaycasts = false;
+                Image accentImg = accentObj.GetComponentOrNull<Image>();
+                if (accentImg.IsNotNull())
+                {
+                    accentImg.color = new Color(1f, 0.84f, 0.0f, 1f);
+                }
+                else
+                {
+                    // Accent image missing
+                }
+
+                canvasGroup = notificationPanel.GetComponentOrNull<CanvasGroup>();
+                if (canvasGroup.IsNotNull())
+                {
+                    canvasGroup.alpha = 0f;
+                    canvasGroup.blocksRaycasts = false;
+                }
+                else
+                {
+                    // Canvas group missing
+                }
 
                 // Try to load icon from Assets/AchievementIcons/walk_100m_unlocked.png
                 if (unlockedIconSprite.IsNull())
@@ -388,70 +455,126 @@ namespace JustAGame.UI
                 // Create Icon Image
                 GameObject iconObj = new GameObject("Icon", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
                 iconObj.transform.SetParent(notificationPanel.transform, false);
-                RectTransform iconRect = iconObj.GetComponent<RectTransform>();
-                iconRect.anchorMin = new Vector2(0f, 0.5f);
-                iconRect.anchorMax = new Vector2(0f, 0.5f);
-                iconRect.pivot = new Vector2(0f, 0.5f);
-                iconRect.sizeDelta = new Vector2(56f, 56f);
-                iconRect.anchoredPosition = new Vector2(12f, -1f);
-
-                iconImage = iconObj.GetComponent<Image>();
-                if (unlockedIconSprite.IsNotNull())
+                RectTransform iconRect = iconObj.GetComponentOrNull<RectTransform>();
+                if (iconRect.IsNotNull())
                 {
-                    iconImage.sprite = unlockedIconSprite;
+                    iconRect.anchorMin = new Vector2(0f, 0.5f);
+                    iconRect.anchorMax = new Vector2(0f, 0.5f);
+                    iconRect.pivot = new Vector2(0f, 0.5f);
+                    iconRect.sizeDelta = new Vector2(56f, 56f);
+                    iconRect.anchoredPosition = new Vector2(12f, -1f);
                 }
                 else
                 {
-                    // Fallback placeholder color
-                    iconImage.color = new Color(1f, 0.85f, 0.2f, 1f);
+                    // Icon rect missing
                 }
 
-                    // Create Header TMP
-                    GameObject headerObj = new GameObject("Header", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
-                    headerObj.transform.SetParent(notificationPanel.transform, false);
-                    RectTransform headerRect = headerObj.GetComponent<RectTransform>();
+                iconImage = iconObj.GetComponentOrNull<Image>();
+                if (iconImage.IsNotNull())
+                {
+                    if (unlockedIconSprite.IsNotNull())
+                    {
+                        iconImage.sprite = unlockedIconSprite;
+                    }
+                    else
+                    {
+                        // Fallback placeholder color
+                        iconImage.color = new Color(1f, 0.85f, 0.2f, 1f);
+                    }
+                }
+                else
+                {
+                    // Icon image missing
+                }
+
+                // Create Header TMP
+                GameObject headerObj = new GameObject("Header", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+                headerObj.transform.SetParent(notificationPanel.transform, false);
+                RectTransform headerRect = headerObj.GetComponentOrNull<RectTransform>();
+                if (headerRect.IsNotNull())
+                {
                     headerRect.anchorMin = new Vector2(0f, 1f);
                     headerRect.anchorMax = new Vector2(1f, 1f);
                     headerRect.pivot = new Vector2(0f, 1f);
                     headerRect.anchoredPosition = new Vector2(76f, -10f);
                     headerRect.sizeDelta = new Vector2(-86f, 18f);
+                }
+                else
+                {
+                    // Header rect missing
+                }
 
-                    headerTMP = headerObj.GetComponent<TextMeshProUGUI>();
+                headerTMP = headerObj.GetComponentOrNull<TextMeshProUGUI>();
+                if (headerTMP.IsNotNull())
+                {
                     headerTMP.text = "ACHIEVEMENT UNLOCKED";
                     headerTMP.fontSize = 11f;
                     headerTMP.fontStyle = FontStyles.Bold;
                     headerTMP.color = new Color(1f, 0.84f, 0.0f, 1f);
+                }
+                else
+                {
+                    // Header TMP missing
+                }
 
-                    // Create Title TMP
-                    GameObject titleObj = new GameObject("Title", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
-                    titleObj.transform.SetParent(notificationPanel.transform, false);
-                    RectTransform titleRect = titleObj.GetComponent<RectTransform>();
+                // Create Title TMP
+                GameObject titleObj = new GameObject("Title", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+                titleObj.transform.SetParent(notificationPanel.transform, false);
+                RectTransform titleRect = titleObj.GetComponentOrNull<RectTransform>();
+                if (titleRect.IsNotNull())
+                {
                     titleRect.anchorMin = new Vector2(0f, 1f);
                     titleRect.anchorMax = new Vector2(1f, 1f);
                     titleRect.pivot = new Vector2(0f, 1f);
                     titleRect.anchoredPosition = new Vector2(76f, -28f);
                     titleRect.sizeDelta = new Vector2(-86f, 22f);
+                }
+                else
+                {
+                    // Title rect missing
+                }
 
-                    titleTMP = titleObj.GetComponent<TextMeshProUGUI>();
+                titleTMP = titleObj.GetComponentOrNull<TextMeshProUGUI>();
+                if (titleTMP.IsNotNull())
+                {
                     titleTMP.text = "Century Walker";
                     titleTMP.fontSize = 15f;
                     titleTMP.fontStyle = FontStyles.Bold;
                     titleTMP.color = Color.white;
+                }
+                else
+                {
+                    // Title TMP missing
+                }
 
-                    // Create Description TMP
-                    GameObject descObj = new GameObject("Description", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
-                    descObj.transform.SetParent(notificationPanel.transform, false);
-                    RectTransform descRect = descObj.GetComponent<RectTransform>();
+                // Create Description TMP
+                GameObject descObj = new GameObject("Description", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+                descObj.transform.SetParent(notificationPanel.transform, false);
+                RectTransform descRect = descObj.GetComponentOrNull<RectTransform>();
+                if (descRect.IsNotNull())
+                {
                     descRect.anchorMin = new Vector2(0f, 1f);
                     descRect.anchorMax = new Vector2(1f, 1f);
                     descRect.pivot = new Vector2(0f, 1f);
                     descRect.anchoredPosition = new Vector2(76f, -48f);
                     descRect.sizeDelta = new Vector2(-86f, 18f);
+                }
+                else
+                {
+                    // Desc rect missing
+                }
 
-                    descriptionTMP = descObj.GetComponent<TextMeshProUGUI>();
+                descriptionTMP = descObj.GetComponentOrNull<TextMeshProUGUI>();
+                if (descriptionTMP.IsNotNull())
+                {
                     descriptionTMP.text = "You walked 100 meters!";
                     descriptionTMP.fontSize = 11f;
                     descriptionTMP.color = new Color(0.85f, 0.85f, 0.85f, 1f);
+                }
+                else
+                {
+                    // Description TMP missing
+                }
 
                     notificationPanel.SetActive(false);
             }
