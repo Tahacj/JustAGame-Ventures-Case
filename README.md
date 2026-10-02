@@ -105,6 +105,11 @@ Ekrandaki yürüme mesafesi metni TextMeshPro ile 3 farklı renk durumunda günc
 * **Tek Numaralı Ürünler (1, 3)**: Satın alan oyuncunun envanterine eklenir.
 * **Çift Numaralı Ürünler (2, 4)**: Host oyuncunun envanterine yönlendirilir.
 
+### 7. Çoklu Oyun Platform Mimarisi & Standart Ağ Sözleşmesi (GamePlatform & INetworkManager)
+* Gelecekte geliştirilecek yeni oyunlar ve harici masaüstü launcher/arayüzler için `GamePlatform` statik cephesi (facade) oluşturulmuştur.
+* `GamePlatform.NetworkManager` (`INetworkManager`) arayüzü sayesinde yerel ağ (`StartLocal`, `ConnectLocal`) ve küresel EOS Relay (`StartRemote`, `JoinRemote`, `GetCode`) tek bir standart sözleşme üzerinden yönetilir; işlemler hata fırlatmak yerine `NetworkStartResult` durum kodlarıyla döndürülür.
+* Detaylar için **[PLATFORM_ARCHITECTURE.md](file:///c:/Users/T_CJ/JustAGame%20Ventures%20Case/PLATFORM_ARCHITECTURE.md)** belgesini inceleyin.
+
 ---
 
 ## Kontroller & Geliştirici Kısayolları

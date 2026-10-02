@@ -92,6 +92,12 @@
   * Host using `EOSNetworkManagerBridge.Instance.StartEosHost()`.
 * **Client Synchronization Guards:**
   * Input processing scripts (like `ClientAuthoritativeMovement`) must verify `isOwned` AND `NetworkClient.ready` before reading inputs or moving.
+* **Unified Network Contract Standard (`INetworkManager` & `NetworkStartResult`):**
+  * External launchers, UI controllers, and future game titles must consume networking via `GamePlatform.NetworkManager` (`INetworkManager`).
+  * **Dual-Mode Networking:** Explicitly distinguish local LAN hosting (`StartLocal`, `ConnectLocal(ip)`) from global remote relay (`StartRemote()`, `JoinRemote(code)`).
+  * **Non-Throwing Remote Operations:** All remote operations must return typed `Task<NetworkStartResult>` enum outcomes instead of throwing uncaught exceptions to caller UI or external processes.
+  * **Input Pre-Validation:** Validate join codes (must be non-empty and exactly 32-character hexadecimal PUID) before dispatching network calls, returning `NetworkStartResult.InvalidCode` on failure.
+  * **Host Code Sharing:** Provide `GetCode()` to query the host's joinable 32-character PUID cleanly, returning `string.Empty` when no session is active.
 
 ---
 

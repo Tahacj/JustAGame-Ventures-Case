@@ -37,6 +37,20 @@ namespace JustAGame.Core.Platform
             }
         }
 
+        /// <summary>
+        /// External-facing network manager contract for UI launchers and future platform integrations.
+        /// Provides StartLocal, ConnectLocal, StartRemote, JoinRemote, and GetCode operations.
+        /// Returns null if the underlying network service does not implement INetworkManager.
+        /// </summary>
+        public static INetworkManager NetworkManager
+        {
+            get
+            {
+                EnsureInitialized();
+                return _network as INetworkManager;
+            }
+        }
+
         public static IPlatformStatsService Stats
         {
             get

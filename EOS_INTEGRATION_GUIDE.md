@@ -46,11 +46,24 @@ JustAGame Ventures Case/
 │   │               └── Tool~/EOS_DevAuthTool.exe      <-- Local credential server for dual-instance testing
 │   └── Scripts/
 │       ├── Core/
-│       │   └── Network/
-│       │       ├── SteamAuthManager.cs                <-- [NEW] Steamworks lifecycle, WebApi session ticket retrieval, EOS bridge
-│       │       ├── EOSNetworkManagerBridge.cs         <-- EOS lifecycle coordinator, P2P host/client starter
-│       │       ├── EOSNetworkAuthenticator.cs         <-- Anti-spoofing physical address authenticator
-│       │       └── EOSPlayerStatsTracker.cs           <-- [NEW] Movement ingestion, EOS Stats & Achievements, 5m batching, PlayerPrefs cache
+│       │   ├── Network/
+│       │   │   ├── SteamAuthManager.cs                <-- [NEW] Steamworks lifecycle, WebApi session ticket retrieval, EOS bridge
+│       │   │   ├── EOSNetworkManagerBridge.cs         <-- EOS lifecycle coordinator, P2P host/client starter
+│       │   │   ├── EOSNetworkAuthenticator.cs         <-- Anti-spoofing physical address authenticator
+│       │   │   └── EOSPlayerStatsTracker.cs           <-- [NEW] Movement ingestion, EOS Stats & Achievements, 5m batching, PlayerPrefs cache
+│       │   └── Platform/
+│       │       ├── GamePlatform.cs                    <-- [NEW] Unified static facade: Auth, Network, NetworkManager, Stats
+│       │       ├── INetworkManager.cs                 <-- [NEW] Unified network interface contract (StartLocal, ConnectLocal, StartRemote, JoinRemote, GetCode)
+│       │       ├── NetworkStartResult.cs              <-- [NEW] Strongly-typed network outcome enum (Success, NotInitialized, AlreadyActive, etc.)
+│       │       ├── IPlatformAuthService.cs            <-- Platform authentication contract
+│       │       ├── IPlatformNetworkService.cs         <-- Platform network lifecycle contract
+│       │       ├── IPlatformStatsService.cs           <-- Platform cloud metrics contract
+│       │       ├── EOSPlatformAuthService.cs          <-- EOS multi-provider auth service implementation
+│       │       ├── EOSPlatformNetworkService.cs       <-- Dual-interface network implementation (IPlatformNetworkService + INetworkManager)
+│       │       ├── EOSPlatformStatsService.cs         <-- EOS stats & achievement service implementation
+│       │       ├── EOSPlatformBootstrap.cs            <-- Automatic launcher CLI and headless runner bootstrapper
+│       │       ├── PlatformCommandLineArgs.cs         <-- CLI argument parser (-autologin, -autohost, -autojoin, -whitelist)
+│       │       └── PlatformDeepLinkHandler.cs         <-- Custom URI handler (justagame://join?host=PUID)
 │       ├── UI/
 │       │   ├── EOSLoginUI.cs                          <-- [NEW] TMP login modal with Steam, Guest, DevAuth & Epic Account buttons + 14s guard
 │       │   ├── EOSNetworkHUD.cs                       <-- [EXPANDED] In-game GUI for PUID display, copy/paste, host/connect, auth switcher

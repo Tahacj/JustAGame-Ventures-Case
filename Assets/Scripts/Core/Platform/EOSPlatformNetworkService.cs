@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Mirror;
 using JustAGame.Core.Network;
 using JustAGame.Pooling;
@@ -8,10 +9,11 @@ using UnityEngine;
 namespace JustAGame.Core.Platform
 {
     /// <summary>
-    /// Production implementation of IPlatformNetworkService.
+    /// Production implementation of IPlatformNetworkService and INetworkManager.
     /// Manages Mirror P2P session lifecycles, host initiation, client connections, and peer authorization.
+    /// Bridges both the internal platform API and the external-facing INetworkManager contract.
     /// </summary>
-    public sealed class EOSPlatformNetworkService : IPlatformNetworkService
+    public sealed class EOSPlatformNetworkService : IPlatformNetworkService, INetworkManager
     {
         public bool IsHost => NetworkServer.active && NetworkClient.isConnected;
         public bool IsClient => NetworkClient.isConnected && !NetworkServer.active;
@@ -97,6 +99,10 @@ namespace JustAGame.Core.Platform
                 Debug.LogError($"[EOSPlatformNetworkService] Exception in constructor: {ex.Message}");
             }
         }
+
+        // ───────────────────────────────────────────────
+        // IPlatformNetworkService Implementation
+        // ───────────────────────────────────────────────
 
         public bool StartHost()
         {
@@ -281,6 +287,221 @@ namespace JustAGame.Core.Platform
             }
         }
 
+        // ───────────────────────────────────────────────
+        // INetworkManager Implementation
+        // ───────────────────────────────────────────────
+
+        /// <inheritdoc />
+        public void StartLocal()
+        {
+            try
+            {
+                var nm = GetNetworkManager();
+                if (nm.IsNull())
+                {
+                    string error = "GameNetworkManager not found in scene. Cannot start local host.";
+                    Debug.LogError($"[EOSPlatformNetworkService] {error}");
+                    OnNetworkError?.Invoke(error);
+                }
+                else
+                {
+                    if (NetworkServer.active || NetworkClient.active)
+                    {
+                        Debug.LogWarning("[EOSPlatformNetworkService] StartLocal ignored: a session is already active.");
+                    }
+                    else
+                    {
+                        nm.networkAddress = "localhost";
+                        nm.StartHost();
+
+#if UNITY_EDITOR
+                        Debug.Log("[EOSPlatformNetworkService] Local host started on localhost.");
+#endif
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                string error = $"Exception in StartLocal: {ex.Message}";
+                Debug.LogError($"[EOSPlatformNetworkService] {error}");
+                OnNetworkError?.Invoke(error);
+            }
+        }
+
+        /// <inheritdoc />
+        public void ConnectLocal(string ip)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(ip))
+                {
+                    string error = "ConnectLocal failed: IP address cannot be empty.";
+                    Debug.LogError($"[EOSPlatformNetworkService] {error}");
+                    OnNetworkError?.Invoke(error);
+                }
+                else
+                {
+                    var nm = GetNetworkManager();
+                    if (nm.IsNull())
+                    {
+                        string error = "GameNetworkManager not found in scene. Cannot connect locally.";
+                        Debug.LogError($"[EOSPlatformNetworkService] {error}");
+                        OnNetworkError?.Invoke(error);
+                    }
+                    else
+                    {
+                        if (NetworkServer.active || NetworkClient.active)
+                        {
+                            Debug.LogWarning("[EOSPlatformNetworkService] ConnectLocal ignored: a session is already active.");
+                        }
+                        else
+                        {
+                            nm.networkAddress = ip.Trim();
+                            nm.StartClient();
+
+#if UNITY_EDITOR
+                            Debug.Log($"[EOSPlatformNetworkService] Connecting locally to {ip.Trim()}...");
+#endif
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                string error = $"Exception in ConnectLocal: {ex.Message}";
+                Debug.LogError($"[EOSPlatformNetworkService] {error}");
+                OnNetworkError?.Invoke(error);
+            }
+        }
+
+        /// <inheritdoc />
+        public Task<NetworkStartResult> StartRemote()
+        {
+            try
+            {
+                var bridge = GetBridge();
+                if (bridge.IsNull())
+                {
+                    Debug.LogError("[EOSPlatformNetworkService] StartRemote failed: EOSNetworkManagerBridge not found.");
+                    return Task.FromResult(NetworkStartResult.MissingDependency);
+                }
+                else
+                {
+                    if (!bridge.IsEosReady)
+                    {
+                        Debug.LogError("[EOSPlatformNetworkService] StartRemote failed: EOS SDK not initialized.");
+                        return Task.FromResult(NetworkStartResult.NotInitialized);
+                    }
+                    else
+                    {
+                        if (NetworkServer.active || NetworkClient.active)
+                        {
+                            Debug.LogWarning("[EOSPlatformNetworkService] StartRemote ignored: session already active.");
+                            return Task.FromResult(NetworkStartResult.AlreadyActive);
+                        }
+                        else
+                        {
+                            bool started = bridge.StartEosHost();
+                            if (started)
+                            {
+                                return Task.FromResult(NetworkStartResult.Success);
+                            }
+                            else
+                            {
+                                return Task.FromResult(NetworkStartResult.InternalError);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[EOSPlatformNetworkService] Exception in StartRemote: {ex.Message}");
+                return Task.FromResult(NetworkStartResult.InternalError);
+            }
+        }
+
+        /// <inheritdoc />
+        public Task<NetworkStartResult> JoinRemote(string code)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(code) || code.Trim().Length != 32)
+                {
+                    Debug.LogError("[EOSPlatformNetworkService] JoinRemote failed: code is empty or does not match 32-character EOS Product User ID format.");
+                    return Task.FromResult(NetworkStartResult.InvalidCode);
+                }
+                else
+                {
+                    var bridge = GetBridge();
+                    if (bridge.IsNull())
+                    {
+                        Debug.LogError("[EOSPlatformNetworkService] JoinRemote failed: EOSNetworkManagerBridge not found.");
+                        return Task.FromResult(NetworkStartResult.MissingDependency);
+                    }
+                    else
+                    {
+                        if (!bridge.IsEosReady)
+                        {
+                            Debug.LogError("[EOSPlatformNetworkService] JoinRemote failed: EOS SDK not initialized.");
+                            return Task.FromResult(NetworkStartResult.NotInitialized);
+                        }
+                        else
+                        {
+                            if (NetworkServer.active || NetworkClient.active)
+                            {
+                                Debug.LogWarning("[EOSPlatformNetworkService] JoinRemote ignored: session already active.");
+                                return Task.FromResult(NetworkStartResult.AlreadyActive);
+                            }
+                            else
+                            {
+                                bool joined = bridge.StartEosClient(code.Trim());
+                                if (joined)
+                                {
+                                    return Task.FromResult(NetworkStartResult.Success);
+                                }
+                                else
+                                {
+                                    return Task.FromResult(NetworkStartResult.InternalError);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[EOSPlatformNetworkService] Exception in JoinRemote: {ex.Message}");
+                return Task.FromResult(NetworkStartResult.InternalError);
+            }
+        }
+
+        /// <inheritdoc />
+        public string GetCode()
+        {
+            try
+            {
+                var bridge = GetBridge();
+                if (bridge.IsNotNull() && bridge.IsEosReady)
+                {
+                    return bridge.LocalProductId;
+                }
+                else
+                {
+                    return string.Empty;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[EOSPlatformNetworkService] Exception in GetCode: {ex.Message}");
+                return string.Empty;
+            }
+        }
+
+        // ───────────────────────────────────────────────
+        // Internal Helpers
+        // ───────────────────────────────────────────────
+
         private EOSNetworkManagerBridge GetBridge()
         {
             try
@@ -300,6 +521,30 @@ namespace JustAGame.Core.Platform
                 return null;
             }
         }
+
+        private GameNetworkManager GetNetworkManager()
+        {
+            try
+            {
+                if (NetworkManager.singleton.IsNotNull())
+                {
+                    return NetworkManager.singleton as GameNetworkManager;
+                }
+                else
+                {
+                    return UnityEngine.Object.FindFirstObjectByType<GameNetworkManager>();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[EOSPlatformNetworkService] Exception in GetNetworkManager: {ex.Message}");
+                return null;
+            }
+        }
+
+        // ───────────────────────────────────────────────
+        // Event Handlers
+        // ───────────────────────────────────────────────
 
         private void HandleHostStarted(string localPuid)
         {
